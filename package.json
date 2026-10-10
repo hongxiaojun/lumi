@@ -12,7 +12,7 @@
     "test": "vitest run",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "rm -f src-tauri/target/release/bundle/macos/rw.*.dmg && CI=true tauri build"
   },
   "dependencies": {
     "@fontsource/newsreader": "^5.3.0",
