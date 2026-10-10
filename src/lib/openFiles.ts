@@ -71,3 +71,16 @@ export async function subscribeRejectedOpens(
 export function formatUnsupportedTip(names: string[]): string {
   return `不支持的格式：${names.join('、')}`
 }
+
+/** Stable listener body: always calls the latest import callback via getter. */
+export function createOpenBatchHandler(
+  getImport: () => (files: File[]) => void | Promise<void>,
+  onErrors?: (errors: string[]) => void,
+): (items: PendingOpen[]) => Promise<void> {
+  return async (items: PendingOpen[]) => {
+    if (!items.length) return
+    const { files, errors } = await loadOpenedFiles(items)
+    if (files.length) await getImport()(files)
+    if (errors.length) onErrors?.(errors)
+  }
+}

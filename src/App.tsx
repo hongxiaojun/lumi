@@ -73,6 +73,7 @@ export default function App() {
   const hubOn = useRef(false)
   const deviceId = useRef<string | null>(null)
   const templateRef = useRef<Prefs>(DEFAULT_PREFS)
+  const handleImportRef = useRef<(files: FileList | File[]) => Promise<void>>(async () => {})
 
   const refresh = useCallback(async () => {
     const rows = hubOn.current && deviceId.current ? await listShelf(deviceId.current) : await listBooks()
@@ -136,7 +137,7 @@ export default function App() {
     void (async () => {
       if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
       try {
-                const {
+        const {
           formatUnsupportedTip,
           loadOpenedFiles,
           subscribeOpenedFiles,
@@ -147,7 +148,7 @@ export default function App() {
           if (!items.length || cancelled) return
           const { files, errors } = await loadOpenedFiles(items)
           if (cancelled) return
-          if (files.length) await handleImport(files)
+          if (files.length) await handleImportRef.current(files)
           if (errors.length) setError((prev) => (prev ? `${prev}\n${errors.join('\n')}` : errors.join('\n')))
         }
         const unRejected = await subscribeRejectedOpens((names) => {
@@ -170,7 +171,7 @@ export default function App() {
         }
         const drained = await takeAndLoadOpenedFiles()
         if (cancelled) return
-        if (drained.files.length) await handleImport(drained.files)
+        if (drained.files.length) await handleImportRef.current(drained.files)
         if (drained.errors.length) {
           setError((prev) =>
             prev ? `${prev}\n${drained.errors.join('\n')}` : drained.errors.join('\n'),
@@ -211,6 +212,7 @@ export default function App() {
     await refresh()
     if (reasons.length) setError(reasons.join('\n'))
   }
+  handleImportRef.current = handleImport
 
   async function handleRemove(id: string) {
     const book = books.find((row) => row.id === id) ?? (await getBook(id))

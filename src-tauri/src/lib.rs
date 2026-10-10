@@ -1,5 +1,6 @@
 mod ai_library;
 mod book_files;
+mod menu_bar;
 mod open_files;
 
 use open_files::{register_opens_filtered, OpenFilesState};
@@ -22,10 +23,12 @@ pub fn run() {
             open_files::read_opened_file
         ])
         .setup(|app| {
+            menu_bar::install_menu(app.handle())?;
             let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
             register_opens_filtered(app.handle(), args);
             Ok(())
         })
+        .on_menu_event(|app, event| menu_bar::on_menu_event(app, event))
         .build(tauri::generate_context!())
         .expect("error while building Lumi")
         .run(|app, event| match event {

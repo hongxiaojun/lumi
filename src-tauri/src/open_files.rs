@@ -166,29 +166,46 @@ fn admit_batch(state: &OpenFilesState, paths: Vec<PathBuf>) -> Vec<PendingOpen> 
     batch
 }
 
-/// Admit accepted paths into whitelist + ready/pending state machine; emit `open-files` when ready.
-pub fn register_opens(app: &AppHandle, paths: Vec<PathBuf>) {
-    let state = app.state::<OpenFilesState>();
-    let batch = admit_batch(&state, paths);
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct OpenRegistration {
+    pub rejected: Vec<String>,
+    /// `Some` → emit `open-files` with these items (frontend ready).
+    /// `None` → either empty or queued into pending (not ready).
+    pub to_emit: Option<Vec<PendingOpen>>,
+}
+
+/// Pure registration against in-memory state (no AppHandle). Used by menu Open and OS open/drop.
+pub fn register_opens_into(state: &OpenFilesState, paths: Vec<PathBuf>) -> OpenRegistration {
+    let filtered = filter_open_paths(paths);
+    let batch = admit_batch(state, filtered.accepted);
     let to_emit = match state.delivery.lock() {
         Ok(mut delivery) => delivery.route(batch),
         Err(_) => None,
     };
-    // Lock released before emit.
-    if let Some(batch) = to_emit {
-        let _ = app.emit("open-files", &batch);
+    OpenRegistration {
+        rejected: filtered.rejected,
+        to_emit,
     }
 }
 
 /// Filter paths, surface rejected names, register accepted via the open-files pipeline.
 pub fn register_opens_filtered(app: &AppHandle, paths: Vec<PathBuf>) {
-    let filtered = filter_open_paths(paths);
-    if !filtered.rejected.is_empty() {
-        let _ = app.emit("open-files-rejected", &filtered.rejected);
+    let state = app.state::<OpenFilesState>();
+    let result = register_opens_into(&state, paths);
+    if !result.rejected.is_empty() {
+        let _ = app.emit("open-files-rejected", &result.rejected);
     }
-    if !filtered.accepted.is_empty() {
-        register_opens(app, filtered.accepted);
+    if let Some(batch) = result.to_emit {
+        let _ = app.emit("open-files", &batch);
     }
+}
+
+/// Menu / dialog "Open…" layer: empty selection = cancel (no-op).
+pub fn register_menu_open_selection(
+    state: &OpenFilesState,
+    selected: Option<Vec<PathBuf>>,
+) -> OpenRegistration {
+    register_opens_into(state, selected.unwrap_or_default())
 }
 
 #[tauri::command]
@@ -304,6 +321,49 @@ mod tests {
         ]);
         assert_eq!(got.accepted, vec![PathBuf::from("/Books/Good.epub")]);
         assert_eq!(got.rejected, vec!["photo.png".to_string(), "readme".to_string()]);
+    }
+
+    #[test]
+    fn menu_open_cancel_is_noop() {
+        let state = OpenFilesState::default();
+        let _ = state.delivery.lock().unwrap().take(); // ready
+        let result = register_menu_open_selection(&state, None);
+        assert!(result.rejected.is_empty());
+        assert!(result.to_emit.is_none());
+        assert!(state.whitelist.lock().unwrap().is_empty());
+        let empty = register_menu_open_selection(&state, Some(vec![]));
+        assert!(empty.rejected.is_empty());
+        assert!(empty.to_emit.is_none());
+    }
+
+    #[test]
+    fn menu_open_mixed_formats_reject_and_accept() {
+        let state = OpenFilesState::default();
+        let _ = state.delivery.lock().unwrap().take();
+        let dir = tempfile::tempdir().unwrap();
+        let good = dir.path().join("ok.epub");
+        let bad = dir.path().join("nope.txt");
+        fs::write(&good, b"E").unwrap();
+        fs::write(&bad, b"T").unwrap();
+        let result = register_menu_open_selection(&state, Some(vec![good, bad]));
+        assert_eq!(result.rejected, vec!["nope.txt".to_string()]);
+        let batch = result.to_emit.expect("ready emit");
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].name, "ok.epub");
+    }
+
+    #[test]
+    fn menu_open_dedupes_unconsumed_token() {
+        let state = OpenFilesState::default();
+        let _ = state.delivery.lock().unwrap().take();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("one.epub");
+        fs::write(&file, b"1").unwrap();
+        let first = register_menu_open_selection(&state, Some(vec![file.clone()]));
+        let second = register_menu_open_selection(&state, Some(vec![file]));
+        assert_eq!(first.to_emit.as_ref().unwrap().len(), 1);
+        assert!(second.to_emit.is_none());
+        assert_eq!(state.whitelist.lock().unwrap().len(), 1);
     }
 
     #[test]

@@ -7,6 +7,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invoke(
 vi.mock('@tauri-apps/api/event', () => ({ listen: (...args: unknown[]) => listen(...args) }))
 
 import {
+  createOpenBatchHandler,
   formatUnsupportedTip,
   loadOpenedFiles,
   subscribeOpenedFiles,
@@ -246,5 +247,24 @@ describe('openFiles (M12-2)', () => {
     handler?.({ payload: ['notes.txt', 'photo.png'] })
     await finished
     expect(tip).toBe('不支持的格式：notes.txt、photo.png')
+  })
+
+  it('two open-files batches always use the latest import callback', async () => {
+    setTauri(true)
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_opened_file') return new Uint8Array([1]).buffer
+      throw new Error(cmd)
+    })
+    const calls: string[] = []
+    let current = async (files: File[]) => {
+      calls.push(`v1:${files[0].name}`)
+    }
+    const handler = createOpenBatchHandler(() => current)
+    await handler([{ token: 'a', name: 'first.epub' }])
+    current = async (files: File[]) => {
+      calls.push(`v2:${files[0].name}`)
+    }
+    await handler([{ token: 'b', name: 'second.epub' }])
+    expect(calls).toEqual(['v1:first.epub', 'v2:second.epub'])
   })
 })
