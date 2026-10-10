@@ -1,0 +1,225 @@
+/* --yaw drives both the slot width and the turn, so the neighbors
+   slide in step with the cover. Faces use a left-hinge spine. */
+@property --yaw {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 90deg;
+}
+@property --pad {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 8px;
+}
+
+.shelf-caption {
+  display: block;
+  width: 100%;
+  margin: 0 0 28px;
+  text-align: left;
+}
+.shelf-caption .kicker {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.14em;
+}
+.shelf-caption h2 {
+  margin: 6px 0 2px;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.shelf-caption p { margin: 0; color: var(--muted); font-size: 13px; }
+
+.shelves { display: flex; flex-direction: column; gap: 28px; }
+.plank {
+  overflow-x: auto;
+  padding: 34px 2px 16px;
+}
+.plank-row {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  width: max-content;
+  min-width: 100%;
+  padding: 0 8px;
+  border-bottom: 2px solid rgba(90, 74, 52, 0.35);
+  box-shadow: 0 14px 16px -14px rgba(60, 48, 32, 0.45);
+}
+
+.tome-slot {
+  --w: 148px;
+  --h: 206px;
+  --d: 32px;
+  --yaw: 90deg;
+  --pad: 8px;
+  --cloth: #243044;
+  --ink: #f4efe6;
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(var(--w) * cos(var(--yaw)) + var(--d) * sin(var(--yaw)) + var(--pad));
+  height: var(--h);
+  transition:
+    --yaw 0.7s cubic-bezier(0.22, 0.8, 0.28, 1),
+    --pad 0.7s cubic-bezier(0.22, 0.8, 0.28, 1);
+}
+.tome-slot.open { --yaw: 28deg; --pad: 28px; z-index: 2; }
+
+.tome-hit {
+  position: absolute;
+  inset: 0;
+  perspective: 760px;
+}
+.scene {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: var(--w);
+  height: var(--h);
+  transform: translateX(-50%);
+  transform-style: preserve-3d;
+  /* The scene is always cover-width. Clicks belong to the slot, not this box. */
+  pointer-events: none;
+}
+.tome {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: rotateY(var(--yaw));
+}
+.face { position: absolute; top: 0; }
+.front,
+.rear {
+  left: 0;
+  width: var(--w);
+  height: var(--h);
+}
+.front {
+  overflow: hidden;
+  border-radius: 1px 3px 3px 1px;
+  background: var(--cloth);
+  color: var(--ink);
+  transform: translateZ(calc(var(--d) / 2));
+  box-shadow: inset 14px 0 16px rgba(0, 0, 0, 0.22);
+}
+.front img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.front-title {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 16px;
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+}
+.rear {
+  background: color-mix(in srgb, var(--cloth) 75%, black);
+  transform: rotateY(180deg) translateZ(calc(var(--d) / 2));
+}
+.spine,
+.pages { width: var(--d); height: var(--h); }
+.spine {
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 14px;
+  transform-origin: left center;
+  transform: rotateY(-90deg);
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.45), rgba(255, 255, 255, 0.2) 48%, rgba(0, 0, 0, 0.35)),
+    var(--cloth);
+  color: var(--ink);
+}
+.spine b {
+  writing-mode: vertical-rl;
+  max-height: calc(100% - 28px);
+  overflow: hidden;
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+}
+.spine-mark {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+.spine-progress {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 4px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.spine-progress i {
+  display: block;
+  height: 100%;
+  background: var(--logo-gold);
+}
+.pages {
+  right: 0;
+  transform-origin: right center;
+  transform: rotateY(90deg);
+  background: repeating-linear-gradient(90deg, #fbf7f0 0 1px, #e4d7c4 1px 3px);
+}
+.tome-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 72%;
+  height: 12px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse, rgba(60, 48, 32, 0.28), transparent 72%);
+  pointer-events: none;
+}
+.tome-slot.open .tome-shadow { width: 86%; }
+
+.tome-slot .book-remove {
+  position: absolute;
+  top: -22px;
+  right: 0;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 13px;
+  line-height: 22px;
+  opacity: 0;
+  pointer-events: none;
+}
+.tome-slot:hover .book-remove,
+.tome-slot:focus-within .book-remove,
+.tome-slot.open .book-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .tome-slot .book-remove { opacity: 0; pointer-events: none; }
+  .tome-slot.open .book-remove { opacity: 0.92; pointer-events: auto; }
+}
+
+@media (max-width: 719px) {
+  .shelf-caption { margin-bottom: 18px; }
+  .shelf-caption h2 { font-size: 18px; }
+  .tome-slot { --w: 112px; --h: 156px; --d: 26px; }
+  .front-title { font-size: 14px; left: 10px; right: 10px; }
+  .spine b { font-size: 12px; letter-spacing: 0.08em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tome-slot { transition: none; }
+}

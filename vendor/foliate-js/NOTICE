@@ -1,0 +1,2 @@
+Vendored from https://github.com/johnfactotum/foliate-js (MIT).
+pdf.js and tts.js in this folder are spike stubs, not the upstream modules.

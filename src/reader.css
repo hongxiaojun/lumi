@@ -1,0 +1,262 @@
+.icon-btn.on {
+  background: color-mix(in srgb, var(--reader-fg) 14%, transparent);
+}
+.drawer-right {
+  left: auto;
+  right: 0;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
+}
+.sheet-wide { width: min(640px, 100%); max-height: 80%; overflow: auto; }
+.field-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--reader-muted);
+  line-height: 1.45;
+}
+.text-input {
+  width: 100%;
+  height: 36px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--reader-fg) 20%, transparent);
+  background: transparent;
+  color: var(--reader-fg);
+  outline: none;
+  font-size: 14px;
+}
+.note-card {
+  padding: 10px 10px 6px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--reader-fg) 5%, transparent);
+}
+.note-quote {
+  display: flex;
+  gap: 8px;
+  text-align: left;
+  width: 100%;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--reader-fg);
+}
+.note-quote i {
+  width: 3px;
+  border-radius: 2px;
+  flex: 0 0 3px;
+}
+.note-quote:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.note-pens {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.note-pen {
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.note-pen.on {
+  outline: 2px solid var(--reader-fg);
+  outline-offset: 1px;
+}
+.note-card textarea {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--reader-fg);
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.sel-bar {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(32, 32, 32, 0.94);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  transform: translateX(-50%);
+}
+.sel-pens { display: flex; gap: 6px; justify-content: center; }
+.sel-pen {
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.sel-actions {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+.sel-actions button {
+  color: #fff;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.bookmark-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bookmark-row .search-hit { flex: 1; }
+.search-hits { margin-top: 10px; }
+.search-hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 8px 8px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--reader-fg);
+  border-bottom: 1px solid color-mix(in srgb, var(--reader-fg) 8%, transparent);
+}
+.search-hit mark {
+  background: color-mix(in srgb, #b09e58 42%, transparent);
+  color: inherit;
+  padding: 0 1px;
+}
+.search-hit-label {
+  display: block;
+  font-size: 11px;
+  color: var(--reader-muted);
+  margin-bottom: 2px;
+}
+.chrome-spacer { flex: 1; }
+.reader-stage {
+  top: env(safe-area-inset-top);
+  bottom: calc(40px + env(safe-area-inset-bottom));
+}
+@media (hover: none) {
+  .reader-stage { bottom: env(safe-area-inset-bottom); }
+  .reader.tools .reader-stage { bottom: calc(40px + env(safe-area-inset-bottom)); }
+  .reader:not(.tools) .reader-progress {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(110%);
+  }
+  .reader-progress {
+    bottom: env(safe-area-inset-bottom);
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+}
+.reader-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  padding: 0 22px;
+  /* The spoken chapter sits under the page and spills into this strip. Keep it covered. */
+  background: var(--reader-bg);
+  color: var(--reader-fg);
+}
+.reader-progress-chapter {
+  flex: 0 1 28%;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--reader-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reader-progress-track {
+  position: relative;
+  flex: 1;
+  height: 16px;
+  display: flex;
+  align-items: center;
+}
+.reader-progress-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--reader-fg) 12%, transparent);
+}
+.reader-progress-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #9e5a52 0%,
+    #b07d4a 16%,
+    #b09e58 33%,
+    #6b9470 50%,
+    #5a7a96 66%,
+    #5c5e8a 83%,
+    #7a5e82 100%
+  );
+  pointer-events: none;
+}
+.reader-progress-range {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  appearance: none;
+  height: 4px;
+  background: transparent;
+  border-radius: 999px;
+}
+.reader-progress-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--reader-bg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--reader-fg) 45%, transparent);
+}
+.reader-progress-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--reader-bg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--reader-fg) 45%, transparent);
+}
+.reader-progress-range:focus-visible {
+  outline: none;
+  box-shadow: 0 3px 0 0 var(--accent);
+}
+.reader-progress-pct {
+  flex: 0 0 52px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--reader-muted);
+}
+.chrome.bottom {
+  bottom: 40px;
+}
+.status-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: rgba(32, 32, 32, 0.88);
+  color: #fff;
+  font-size: 13px;
+}
