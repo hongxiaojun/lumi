@@ -130,6 +130,49 @@ export default function App() {
   }, [refresh])
 
   useEffect(() => {
+    if (booting) return
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+    void (async () => {
+      if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
+      try {
+        const { loadOpenedFiles, subscribeOpenedFiles, takeAndLoadOpenedFiles } = await import(
+          './lib/openFiles'
+        )
+        const ingest = async (items: { token: string; name: string }[]) => {
+          if (!items.length || cancelled) return
+          const { files, errors } = await loadOpenedFiles(items)
+          if (cancelled) return
+          if (files.length) await handleImport(files)
+          if (errors.length) setError((prev) => (prev ? `${prev}\n${errors.join('\n')}` : errors.join('\n')))
+        }
+        // Listen first, then drain pending — avoids dropping a cold-start batch.
+        unlisten = await subscribeOpenedFiles((items) => {
+          void ingest(items)
+        })
+        if (cancelled) {
+          unlisten()
+          return
+        }
+        const drained = await takeAndLoadOpenedFiles()
+        if (cancelled) return
+        if (drained.files.length) await handleImport(drained.files)
+        if (drained.errors.length) {
+          setError((prev) =>
+            prev ? `${prev}\n${drained.errors.join('\n')}` : drained.errors.join('\n'),
+          )
+        }
+      } catch (error) {
+        console.error('M12-2 openFiles', error)
+      }
+    })()
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [booting])
+
+  useEffect(() => {
     if (!openId) {
       setCurrent(null)
       return

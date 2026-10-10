@@ -41,6 +41,24 @@
     "longDescription": "Lumi is a local-first EPUB/PDF reader with annotations and desktop file storage.",
     "macOS": {
       "minimumSystemVersion": "12.0"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "epub"
+        ],
+        "name": "EPUB Book",
+        "role": "Viewer",
+        "mimeType": "application/epub+zip"
+      },
+      {
+        "ext": [
+          "pdf"
+        ],
+        "name": "PDF Document",
+        "role": "Viewer",
+        "mimeType": "application/pdf"
+      }
+    ]
   }
 }
