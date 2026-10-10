@@ -275,9 +275,9 @@ mod tests {
         assert_eq!(
             got.rejected,
             vec![
-                "leaf-reader".into(),
-                "notes.txt".into(),
-                "c.mobi".into(),
+                "leaf-reader".to_string(),
+                "notes.txt".to_string(),
+                "c.mobi".to_string(),
             ]
         );
     }
@@ -291,7 +291,7 @@ mod tests {
             PathBuf::from("/Books/readme"),
         ]);
         assert_eq!(got.accepted, vec![PathBuf::from("/Books/Good.epub")]);
-        assert_eq!(got.rejected, vec!["photo.png".into(), "readme".into()]);
+        assert_eq!(got.rejected, vec!["photo.png".to_string(), "readme".to_string()]);
     }
 
     #[test]
