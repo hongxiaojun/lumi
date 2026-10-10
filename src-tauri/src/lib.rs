@@ -9,7 +9,9 @@ pub fn run() {
             ai_library::save_ai_library,
             book_files::write_book_file,
             book_files::read_book_file,
-            book_files::delete_book_file
+            book_files::delete_book_file,
+            book_files::backup_book_file,
+            book_files::write_migration_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running Lumi");

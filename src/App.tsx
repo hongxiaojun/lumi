@@ -17,6 +17,7 @@ import {
   loadTranslator,
   putAnnotation,
   putBookmark,
+  migrateLegacyBooks,
   putBook,
   saveLocalBookLook,
   saveTranslator,
@@ -82,6 +83,11 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
+        try {
+          await migrateLegacyBooks()
+        } catch (migrateError) {
+          console.error('M10-3 migrateLegacyBooks', migrateError)
+        }
         const on = await probeHub()
         hubOn.current = on
         if (!on) {

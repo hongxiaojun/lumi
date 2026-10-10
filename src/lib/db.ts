@@ -222,3 +222,98 @@ export async function putTranslation(key: string, text: string): Promise<void> {
   const tx = db.transaction('translations', 'readwrite')
   await reqOf(tx.objectStore('translations').put(text, key))
 }
+
+async function putBookRecord(record: LibraryBook | Omit<LibraryBook, 'file'>): Promise<void> {
+  const db = await openDb()
+  const tx = db.transaction('books', 'readwrite')
+  await reqOf(tx.objectStore('books').put(record))
+}
+
+function encodeText(text: string): Uint8Array {
+  return new TextEncoder().encode(text)
+}
+
+async function writeMigrationText(
+  invoke: Awaited<ReturnType<typeof tauriInvoke>>,
+  backupDir: string,
+  fileName: 'books.json' | 'migration.log',
+  text: string,
+): Promise<void> {
+  await invoke('write_migration_text', encodeText(text), {
+    headers: { 'x-backup-dir': backupDir, 'x-file-name': fileName },
+  })
+}
+
+function migrationStamp(): string {
+  return new Date().toISOString()
+}
+
+/** M10-3: one-shot Tauri startup migration of legacy IndexedDB Blobs onto disk. */
+export async function migrateLegacyBooks(): Promise<void> {
+  if (!isTauri()) return
+  const all = await listBooks()
+  const legacy = all.filter((book) => !book.filePath && book.file && book.file.size > 0)
+  if (!legacy.length) return
+
+  const invoke = await tauriInvoke()
+  const backupDir = `backup-${Date.now()}`
+
+  try {
+    const meta: Omit<LibraryBook, 'file' | 'cover'>[] = []
+    for (const book of legacy) {
+      const bytes = new Uint8Array(await book.file.arrayBuffer())
+      await invoke('backup_book_file', bytes, {
+        headers: {
+          'x-backup-dir': backupDir,
+          'x-book-id': book.id,
+          'x-book-ext': bookExt(book.fileName),
+        },
+      })
+      const { file: _f, cover: _c, ...rest } = book
+      meta.push(rest)
+    }
+    await writeMigrationText(invoke, backupDir, 'books.json', JSON.stringify(meta, null, 2))
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    try {
+      await writeMigrationText(
+        invoke,
+        backupDir,
+        'migration.log',
+        `${migrationStamp()} BACKUP_FAILED ${reason}\n`,
+      )
+    } catch {
+      console.error('M10-3 backup failed', error)
+    }
+    return
+  }
+
+  for (const book of legacy) {
+    try {
+      const bytes = new Uint8Array(await book.file.arrayBuffer())
+      const ext = bookExt(book.fileName)
+      const filePath = await invoke<string>('write_book_file', bytes, {
+        headers: { 'x-book-id': book.id, 'x-book-ext': ext },
+      })
+      const readBack = await invoke<ArrayBuffer>('read_book_file', { id: book.id, ext })
+      const readLen = readBack.byteLength
+      if (readLen !== bytes.length) {
+        throw new Error(`size mismatch ${readLen} != ${bytes.length}`)
+      }
+      const { file: _file, ...meta } = book
+      await putBookRecord({ ...meta, filePath })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      try {
+        await writeMigrationText(
+          invoke,
+          backupDir,
+          'migration.log',
+          `${migrationStamp()} ${book.id} ${book.title} ${reason}\n`,
+        )
+      } catch {
+        console.error('M10-3 migrate failed', book.id, error)
+      }
+    }
+  }
+}
