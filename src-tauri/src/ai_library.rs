@@ -8,7 +8,7 @@ fn library_root() -> PathBuf {
     PathBuf::from(home).join(".leaf-reader").join("library")
 }
 
-fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
+pub(crate) fn safe_join(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let normalized = rel.replace('\\', "/");
     if normalized.is_empty()
         || normalized.starts_with('/')
