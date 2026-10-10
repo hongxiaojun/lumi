@@ -115,7 +115,9 @@ where
     FilterOpenResult { accepted, rejected }
 }
 
-fn admit_path(state: &OpenFilesState, path: &Path) -> Result<PendingOpen, String> {
+/// Validate + canonicalize, then (in ONE whitelist lock) dedupe by canonical path and register.
+/// `Ok(None)` = this file already has an unconsumed token; nothing new to deliver.
+fn admit_path(state: &OpenFilesState, path: &Path) -> Result<Option<PendingOpen>, String> {
     let meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
     if meta.file_type().is_symlink() {
         return Err("symlink rejected".into());
@@ -139,25 +141,35 @@ fn admit_path(state: &OpenFilesState, path: &Path) -> Result<PendingOpen, String
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .ok_or_else(|| "bad file name".to_string())?;
-    let token = new_token();
-    state
+    let mut map = state
         .whitelist
         .lock()
-        .map_err(|_| "open-files lock poisoned".to_string())?
-        .insert(token.clone(), canon);
-    Ok(PendingOpen { token, name })
+        .map_err(|_| "open-files lock poisoned".to_string())?;
+    if map.values().any(|existing| existing == &canon) {
+        return Ok(None);
+    }
+    let token = new_token();
+    map.insert(token.clone(), canon);
+    Ok(Some(PendingOpen { token, name }))
+}
+
+/// Admit a batch; skips invalid paths and files that already hold an unconsumed token.
+fn admit_batch(state: &OpenFilesState, paths: Vec<PathBuf>) -> Vec<PendingOpen> {
+    let mut batch = Vec::new();
+    for path in paths {
+        match admit_path(state, &path) {
+            Ok(Some(item)) => batch.push(item),
+            Ok(None) => {}
+            Err(err) => eprintln!("M12 open skip {:?}: {err}", path),
+        }
+    }
+    batch
 }
 
 /// Admit accepted paths into whitelist + ready/pending state machine; emit `open-files` when ready.
 pub fn register_opens(app: &AppHandle, paths: Vec<PathBuf>) {
     let state = app.state::<OpenFilesState>();
-    let mut batch = Vec::new();
-    for path in paths {
-        match admit_path(&state, &path) {
-            Ok(item) => batch.push(item),
-            Err(err) => eprintln!("M12 open skip {:?}: {err}", path),
-        }
-    }
+    let batch = admit_batch(&state, paths);
     let to_emit = match state.delivery.lock() {
         Ok(mut delivery) => delivery.route(batch),
         Err(_) => None,
@@ -295,12 +307,56 @@ mod tests {
     }
 
     #[test]
+    fn register_twice_same_batch_no_duplicate_token() {
+        let state = OpenFilesState::default();
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.epub");
+        let b = dir.path().join("b.pdf");
+        fs::write(&a, b"A").unwrap();
+        fs::write(&b, b"B").unwrap();
+        let first = admit_batch(&state, vec![a.clone(), b.clone()]);
+        assert_eq!(first.len(), 2);
+        let second = admit_batch(&state, vec![a, b]);
+        assert!(second.is_empty());
+        assert_eq!(state.whitelist.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn different_spelling_same_canonical_one_token() {
+        let state = OpenFilesState::default();
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        let file = sub.join("same.epub");
+        fs::write(&file, b"S").unwrap();
+        let alt = sub.join("..").join("sub").join(".").join("same.epub");
+        let got = admit_batch(&state, vec![file, alt]);
+        assert_eq!(got.len(), 1);
+        assert_eq!(state.whitelist.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn consumed_token_allows_reopen() {
+        let state = OpenFilesState::default();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("again.epub");
+        fs::write(&file, b"AG").unwrap();
+        let first = admit_batch(&state, vec![file.clone()]);
+        assert_eq!(first.len(), 1);
+        assert!(admit_batch(&state, vec![file.clone()]).is_empty());
+        read_opened_file_for_test(&state, first[0].token.clone()).unwrap();
+        let again = admit_batch(&state, vec![file]);
+        assert_eq!(again.len(), 1);
+        assert_ne!(again[0].token, first[0].token);
+    }
+
+    #[test]
     fn token_is_one_shot_unknown_errors() {
         let state = OpenFilesState::default();
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("one.epub");
         fs::write(&file, b"EPUB").unwrap();
-        let pending = admit_path(&state, &file).unwrap();
+        let pending = admit_path(&state, &file).unwrap().unwrap();
         assert_eq!(pending.name, "one.epub");
         assert!(!pending.token.contains('/'));
         let first = read_opened_file_for_test(&state, pending.token.clone()).unwrap();
@@ -342,7 +398,7 @@ mod tests {
         // unit-test the size gate with a tiny helper.
         f.write_all(b"small").unwrap();
         drop(f);
-        let pending = admit_path(&state, &big).unwrap();
+        let pending = admit_path(&state, &big).unwrap().unwrap();
         // Manually verify size check function path by writing oversized via sparse if possible.
         // On APFS seek beyond 512MB creates sparse file quickly.
         {

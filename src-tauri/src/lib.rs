@@ -4,7 +4,7 @@ mod open_files;
 
 use open_files::{register_opens_filtered, OpenFilesState};
 use std::path::PathBuf;
-use tauri::{DragDropEvent, RunEvent, WindowEvent};
+use tauri::{DragDropEvent, RunEvent, WebviewEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -37,14 +37,8 @@ pub fn run() {
                     .collect();
                 register_opens_filtered(app, paths);
             }
-            RunEvent::WindowEvent {
-                event: WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }),
-                ..
-            } => {
-                register_opens_filtered(app, paths);
-            }
             RunEvent::WebviewEvent {
-                event: tauri::WebviewEvent::DragDrop(DragDropEvent::Drop { paths, .. }),
+                event: WebviewEvent::DragDrop(DragDropEvent::Drop { paths, .. }),
                 ..
             } => {
                 register_opens_filtered(app, paths);
