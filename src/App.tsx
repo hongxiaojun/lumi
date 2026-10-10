@@ -212,7 +212,10 @@ export default function App() {
     await refresh()
     if (reasons.length) setError(reasons.join('\n'))
   }
-  handleImportRef.current = handleImport
+
+  useEffect(() => {
+    handleImportRef.current = handleImport
+  })
 
   async function handleRemove(id: string) {
     const book = books.find((row) => row.id === id) ?? (await getBook(id))
