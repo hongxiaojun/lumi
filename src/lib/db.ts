@@ -51,19 +51,66 @@ export async function listBooks(): Promise<LibraryBook[]> {
   return rows.sort((a, b) => (b.lastOpenedAt ?? b.addedAt) - (a.lastOpenedAt ?? a.addedAt))
 }
 
-export async function getBook(id: string): Promise<LibraryBook | undefined> {
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+async function tauriInvoke() {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke
+}
+
+export function bookExt(fileName: string): string {
+  const dot = fileName.lastIndexOf('.')
+  const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : ''
+  return /^[a-z0-9]{1,10}$/.test(ext) ? ext : 'epub'
+}
+
+async function getBookRecord(id: string): Promise<LibraryBook | undefined> {
   const db = await openDb()
   const tx = db.transaction('books', 'readonly')
   return reqOf(tx.objectStore('books').get(id)) as Promise<LibraryBook | undefined>
 }
 
+export async function getBook(id: string): Promise<LibraryBook | undefined> {
+  const record = await getBookRecord(id)
+  if (!record?.filePath || !isTauri()) return record
+  const invoke = await tauriInvoke()
+  const data = await invoke<ArrayBuffer>('read_book_file', { id, ext: bookExt(record.fileName) })
+  return { ...record, file: new Blob([data]) }
+}
+
 export async function putBook(book: LibraryBook): Promise<void> {
+  let record: LibraryBook | Omit<LibraryBook, 'file'> = book
+  // Legacy = row already in IDB without filePath (still holds Blob). Migrating those is M10-3.
+  // If the stored row OR the caller already has filePath, always take the disk path — never rewrite Blob.
+  const existing = isTauri() ? await getBookRecord(book.id) : undefined
+  const legacy = !!existing && !existing.filePath && !book.filePath
+  if (isTauri() && !legacy) {
+    let filePath = book.filePath ?? existing?.filePath
+    if (!filePath) {
+      const invoke = await tauriInvoke()
+      const bytes = new Uint8Array(await book.file.arrayBuffer())
+      filePath = await invoke<string>('write_book_file', bytes, {
+        headers: { 'x-book-id': book.id, 'x-book-ext': bookExt(book.fileName) },
+      })
+    }
+    const { file: _file, ...meta } = book
+    record = { ...meta, filePath }
+  }
   const db = await openDb()
   const tx = db.transaction('books', 'readwrite')
-  await reqOf(tx.objectStore('books').put(book))
+  await reqOf(tx.objectStore('books').put(record))
 }
 
 export async function deleteBook(id: string): Promise<void> {
+  if (isTauri()) {
+    const record = await getBookRecord(id)
+    if (record?.filePath) {
+      const invoke = await tauriInvoke()
+      await invoke('delete_book_file', { id, ext: bookExt(record.fileName) })
+    }
+  }
   const db = await openDb()
   const tx = db.transaction('books', 'readwrite')
   await reqOf(tx.objectStore('books').delete(id))

@@ -64,6 +64,8 @@ export type LibraryBook = {
   author: string
   fileName: string
   file: Blob
+  /** Tauri 桌面版：书原文件在 app_data_dir()/books/ 下的路径；有它时 IndexedDB 不存 file Blob */
+  filePath?: string
   cover: Blob | null
   coverUrl?: string
   addedAt: number
