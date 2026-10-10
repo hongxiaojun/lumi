@@ -19,10 +19,38 @@ pub struct PendingOpen {
     pub name: String,
 }
 
+/// Ready flag + pending queue under ONE lock, so "route vs take" can't race.
+#[derive(Default, Debug)]
+pub struct Delivery {
+    ready: bool,
+    pending: Vec<PendingOpen>,
+}
+
+impl Delivery {
+    /// Not ready → queue, return None (don't emit). Ready → don't queue, return batch to emit.
+    pub fn route(&mut self, batch: Vec<PendingOpen>) -> Option<Vec<PendingOpen>> {
+        if batch.is_empty() {
+            return None;
+        }
+        if self.ready {
+            Some(batch)
+        } else {
+            self.pending.extend(batch);
+            None
+        }
+    }
+
+    /// Drain pending and mark ready in the same critical section.
+    pub fn take(&mut self) -> Vec<PendingOpen> {
+        self.ready = true;
+        std::mem::take(&mut self.pending)
+    }
+}
+
 #[derive(Default)]
 pub struct OpenFilesState {
     whitelist: Mutex<HashMap<String, PathBuf>>,
-    pending: Mutex<Vec<PendingOpen>>,
+    delivery: Mutex<Delivery>,
 }
 
 static TOKEN_SEQ: AtomicU64 = AtomicU64::new(1);
@@ -113,22 +141,23 @@ pub fn register_opens(app: &AppHandle, paths: Vec<PathBuf>) {
             Err(err) => eprintln!("M12-2 skip {:?}: {err}", path),
         }
     }
-    if batch.is_empty() {
-        return;
+    let to_emit = match state.delivery.lock() {
+        Ok(mut delivery) => delivery.route(batch),
+        Err(_) => None,
+    };
+    // Lock released before emit.
+    if let Some(batch) = to_emit {
+        let _ = app.emit("open-files", &batch);
     }
-    if let Ok(mut pending) = state.pending.lock() {
-        pending.extend(batch.iter().cloned());
-    }
-    let _ = app.emit("open-files", &batch);
 }
 
 #[tauri::command]
 pub fn take_pending_opens(state: State<'_, OpenFilesState>) -> Result<Vec<PendingOpen>, String> {
-    let mut pending = state
-        .pending
+    let mut delivery = state
+        .delivery
         .lock()
         .map_err(|_| "open-files lock poisoned".to_string())?;
-    Ok(std::mem::take(&mut *pending))
+    Ok(delivery.take())
 }
 
 #[tauri::command]
@@ -165,6 +194,39 @@ pub fn read_opened_file(state: State<'_, OpenFilesState>, token: String) -> Resu
 mod tests {
     use super::*;
     use std::io::Write;
+
+    fn item(t: &str) -> PendingOpen {
+        PendingOpen { token: t.into(), name: format!("{t}.epub") }
+    }
+
+    #[test]
+    fn delivery_before_ready_queues_without_emit() {
+        let mut d = Delivery::default();
+        assert_eq!(d.route(vec![item("a")]), None);
+        assert_eq!(d.route(vec![item("b")]), None);
+        assert_eq!(d.route(vec![]), None);
+        assert_eq!(d.pending, vec![item("a"), item("b")]);
+        assert!(!d.ready);
+    }
+
+    #[test]
+    fn delivery_take_drains_and_sets_ready() {
+        let mut d = Delivery::default();
+        d.route(vec![item("a")]);
+        assert_eq!(d.take(), vec![item("a")]);
+        assert!(d.ready);
+        assert!(d.pending.is_empty());
+        assert!(d.take().is_empty());
+    }
+
+    #[test]
+    fn delivery_after_ready_emits_without_queue() {
+        let mut d = Delivery::default();
+        d.take();
+        assert_eq!(d.route(vec![item("c")]), Some(vec![item("c")]));
+        assert!(d.pending.is_empty());
+        assert!(d.take().is_empty());
+    }
 
     #[test]
     fn filter_keeps_books_skips_psn_and_exe_dedupes() {

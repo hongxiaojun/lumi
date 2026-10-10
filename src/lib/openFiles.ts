@@ -28,6 +28,8 @@ export async function loadOpenedFiles(
       files.push(new File([data], item.name))
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
+      // Already consumed / expired token (e.g. remount race): skip quietly.
+      if (reason.includes('unknown open token')) continue
       errors.push(`${item.name}：${reason}`)
     }
   }
