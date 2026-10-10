@@ -7,8 +7,10 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invoke(
 vi.mock('@tauri-apps/api/event', () => ({ listen: (...args: unknown[]) => listen(...args) }))
 
 import {
+  formatUnsupportedTip,
   loadOpenedFiles,
   subscribeOpenedFiles,
+  subscribeRejectedOpens,
   takeAndLoadOpenedFiles,
   type PendingOpen,
 } from './openFiles'
@@ -202,5 +204,47 @@ describe('openFiles (M12-2)', () => {
     expect(errors).toHaveLength(1)
     expect(errors[0]).toContain('big.pdf')
     expect(errors.join('\n')).not.toContain('gone.epub')
+  })
+  it('drag/open-files path: event batch imports via loadOpenedFiles', async () => {
+    setTauri(true)
+    let handler: ((event: { payload: PendingOpen[] }) => void) | undefined
+    listen.mockImplementation(async (name: string, cb: typeof handler) => {
+      if (name === 'open-files') handler = cb
+      return () => {}
+    })
+    invoke.mockImplementation(async (cmd: string, args?: { token?: string }) => {
+      if (cmd === 'read_opened_file' && args?.token === 'd1') return new Uint8Array([4]).buffer
+      throw new Error(cmd)
+    })
+    let done!: () => void
+    const finished = new Promise<void>((r) => (done = r))
+    const names: string[] = []
+    await subscribeOpenedFiles(async (items) => {
+      const { files } = await loadOpenedFiles(items)
+      names.push(...files.map((f) => f.name))
+      done()
+    })
+    handler?.({ payload: [{ token: 'd1', name: 'drop.epub' }] })
+    await finished
+    expect(names).toEqual(['drop.epub'])
+  })
+
+  it('rejected opens show 不支持的格式 tip (not silent)', async () => {
+    setTauri(true)
+    let handler: ((event: { payload: string[] }) => void) | undefined
+    listen.mockImplementation(async (name: string, cb: (e: { payload: string[] }) => void) => {
+      if (name === 'open-files-rejected') handler = cb
+      return () => {}
+    })
+    let tip = ''
+    let done!: () => void
+    const finished = new Promise<void>((r) => (done = r))
+    await subscribeRejectedOpens((names) => {
+      tip = formatUnsupportedTip(names)
+      done()
+    })
+    handler?.({ payload: ['notes.txt', 'photo.png'] })
+    await finished
+    expect(tip).toBe('不支持的格式：notes.txt、photo.png')
   })
 })

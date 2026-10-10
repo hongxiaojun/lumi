@@ -2,8 +2,9 @@ mod ai_library;
 mod book_files;
 mod open_files;
 
-use open_files::{filter_open_paths, register_opens, OpenFilesState};
+use open_files::{register_opens_filtered, OpenFilesState};
 use std::path::PathBuf;
+use tauri::{DragDropEvent, RunEvent, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,25 +23,32 @@ pub fn run() {
         ])
         .setup(|app| {
             let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
-            let paths = filter_open_paths(args);
-            if !paths.is_empty() {
-                register_opens(app.handle(), paths);
-            }
+            register_opens_filtered(app.handle(), args);
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building Lumi")
-        .run(|app, event| {
+        .run(|app, event| match event {
             #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-            if let tauri::RunEvent::Opened { urls } = event {
+            RunEvent::Opened { urls } => {
                 let paths: Vec<PathBuf> = urls
                     .into_iter()
                     .filter_map(|url| url.to_file_path().ok())
                     .collect();
-                let paths = filter_open_paths(paths);
-                if !paths.is_empty() {
-                    register_opens(app, paths);
-                }
+                register_opens_filtered(app, paths);
             }
+            RunEvent::WindowEvent {
+                event: WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }),
+                ..
+            } => {
+                register_opens_filtered(app, paths);
+            }
+            RunEvent::WebviewEvent {
+                event: tauri::WebviewEvent::DragDrop(DragDropEvent::Drop { paths, .. }),
+                ..
+            } => {
+                register_opens_filtered(app, paths);
+            }
+            _ => {}
         });
 }

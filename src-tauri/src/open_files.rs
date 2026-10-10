@@ -71,15 +71,24 @@ fn book_ext(path: &Path) -> Option<String> {
         .filter(|e| e == "epub" || e == "pdf")
 }
 
-/// Keep `.epub` / `.pdf` only (case-insensitive), skip `-psn_*` and anything else,
-/// dedupe while preserving order.
-pub fn filter_open_paths<I, P>(args: I) -> Vec<PathBuf>
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct FilterOpenResult {
+    pub accepted: Vec<PathBuf>,
+    /// Display names of paths that were not `.epub`/`.pdf` (for user-facing tips).
+    pub rejected: Vec<String>,
+}
+
+/// Keep `.epub` / `.pdf` only (case-insensitive). Skip `-psn_*` silently.
+/// Other paths contribute their file name to `rejected`. Dedupe accepted (order kept).
+pub fn filter_open_paths<I, P>(args: I) -> FilterOpenResult
 where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
     let mut seen = HashSet::new();
-    let mut out = Vec::new();
+    let mut seen_reject = HashSet::new();
+    let mut accepted = Vec::new();
+    let mut rejected = Vec::new();
     for arg in args {
         let path = arg.as_ref();
         let raw = path.to_string_lossy();
@@ -87,15 +96,23 @@ where
             continue;
         }
         if book_ext(path).is_none() {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| raw.to_string());
+            if !name.is_empty() && seen_reject.insert(name.clone()) {
+                rejected.push(name);
+            }
             continue;
         }
         let key = raw.to_string();
         if !seen.insert(key) {
             continue;
         }
-        out.push(path.to_path_buf());
+        accepted.push(path.to_path_buf());
     }
-    out
+    FilterOpenResult { accepted, rejected }
 }
 
 fn admit_path(state: &OpenFilesState, path: &Path) -> Result<PendingOpen, String> {
@@ -131,14 +148,14 @@ fn admit_path(state: &OpenFilesState, path: &Path) -> Result<PendingOpen, String
     Ok(PendingOpen { token, name })
 }
 
-/// Filter, admit into whitelist + pending, then emit `open-files` for live listeners.
+/// Admit accepted paths into whitelist + ready/pending state machine; emit `open-files` when ready.
 pub fn register_opens(app: &AppHandle, paths: Vec<PathBuf>) {
     let state = app.state::<OpenFilesState>();
     let mut batch = Vec::new();
-    for path in filter_open_paths(paths) {
+    for path in paths {
         match admit_path(&state, &path) {
             Ok(item) => batch.push(item),
-            Err(err) => eprintln!("M12-2 skip {:?}: {err}", path),
+            Err(err) => eprintln!("M12 open skip {:?}: {err}", path),
         }
     }
     let to_emit = match state.delivery.lock() {
@@ -148,6 +165,17 @@ pub fn register_opens(app: &AppHandle, paths: Vec<PathBuf>) {
     // Lock released before emit.
     if let Some(batch) = to_emit {
         let _ = app.emit("open-files", &batch);
+    }
+}
+
+/// Filter paths, surface rejected names, register accepted via the open-files pipeline.
+pub fn register_opens_filtered(app: &AppHandle, paths: Vec<PathBuf>) {
+    let filtered = filter_open_paths(paths);
+    if !filtered.rejected.is_empty() {
+        let _ = app.emit("open-files-rejected", &filtered.rejected);
+    }
+    if !filtered.accepted.is_empty() {
+        register_opens(app, filtered.accepted);
     }
 }
 
@@ -241,9 +269,29 @@ mod tests {
         ];
         let got = filter_open_paths(args);
         assert_eq!(
-            got,
+            got.accepted,
             vec![PathBuf::from("/tmp/A.EPUB"), PathBuf::from("/tmp/b.Pdf")]
         );
+        assert_eq!(
+            got.rejected,
+            vec![
+                "leaf-reader".into(),
+                "notes.txt".into(),
+                "c.mobi".into(),
+            ]
+        );
+    }
+
+    #[test]
+    fn filter_returns_rejected_names_for_bad_ext() {
+        let got = filter_open_paths([
+            PathBuf::from("/Books/Good.epub"),
+            PathBuf::from("/Books/photo.png"),
+            PathBuf::from("/Books/photo.png"),
+            PathBuf::from("/Books/readme"),
+        ]);
+        assert_eq!(got.accepted, vec![PathBuf::from("/Books/Good.epub")]);
+        assert_eq!(got.rejected, vec!["photo.png".into(), "readme".into()]);
     }
 
     #[test]

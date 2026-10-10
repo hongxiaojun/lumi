@@ -136,9 +136,13 @@ export default function App() {
     void (async () => {
       if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return
       try {
-        const { loadOpenedFiles, subscribeOpenedFiles, takeAndLoadOpenedFiles } = await import(
-          './lib/openFiles'
-        )
+                const {
+          formatUnsupportedTip,
+          loadOpenedFiles,
+          subscribeOpenedFiles,
+          subscribeRejectedOpens,
+          takeAndLoadOpenedFiles,
+        } = await import('./lib/openFiles')
         const ingest = async (items: { token: string; name: string }[]) => {
           if (!items.length || cancelled) return
           const { files, errors } = await loadOpenedFiles(items)
@@ -146,10 +150,20 @@ export default function App() {
           if (files.length) await handleImport(files)
           if (errors.length) setError((prev) => (prev ? `${prev}\n${errors.join('\n')}` : errors.join('\n')))
         }
+        const unRejected = await subscribeRejectedOpens((names) => {
+          if (cancelled || !names.length) return
+          const tip = formatUnsupportedTip(names)
+          setError((prev) => (prev ? `${prev}\n${tip}` : tip))
+        })
         // Listen first, then drain pending — avoids dropping a cold-start batch.
-        unlisten = await subscribeOpenedFiles((items) => {
+        const unOpen = await subscribeOpenedFiles((items) => {
           void ingest(items)
         })
+        unlisten = () => {
+          unRejected()
+          unOpen()
+        }
+
         if (cancelled) {
           unlisten()
           return

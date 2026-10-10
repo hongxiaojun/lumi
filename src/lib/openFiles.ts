@@ -55,3 +55,19 @@ export async function subscribeOpenedFiles(
     void onBatch(event.payload ?? [])
   })
 }
+
+/** Unsupported drop/open names from Rust filter (「不支持的格式：xxx」). */
+export async function subscribeRejectedOpens(
+  onRejected: (names: string[]) => void | Promise<void>,
+): Promise<() => void> {
+  if (!isTauri()) return () => {}
+  const { listen } = await import('@tauri-apps/api/event')
+  return listen<string[]>('open-files-rejected', (event) => {
+    const names = (event.payload ?? []).filter(Boolean)
+    if (names.length) void onRejected(names)
+  })
+}
+
+export function formatUnsupportedTip(names: string[]): string {
+  return `不支持的格式：${names.join('、')}`
+}
