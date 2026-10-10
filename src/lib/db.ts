@@ -248,9 +248,20 @@ function migrationStamp(): string {
   return new Date().toISOString()
 }
 
+/** In-flight M10-3 run; StrictMode / double-boot share one Promise. */
+let migrateInFlight: Promise<void> | null = null
+
 /** M10-3: one-shot Tauri startup migration of legacy IndexedDB Blobs onto disk. */
 export async function migrateLegacyBooks(): Promise<void> {
   if (!isTauri()) return
+  if (migrateInFlight) return migrateInFlight
+  migrateInFlight = migrateLegacyBooksOnce().finally(() => {
+    migrateInFlight = null
+  })
+  return migrateInFlight
+}
+
+async function migrateLegacyBooksOnce(): Promise<void> {
   const all = await listBooks()
   const legacy = all.filter((book) => !book.filePath && book.file && book.file.size > 0)
   if (!legacy.length) return

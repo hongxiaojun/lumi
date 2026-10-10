@@ -231,7 +231,9 @@ mod tests {
     }
 
     /// A2a visible evidence under /tmp/lumi-m10-3-demo (not the real Application Support tree).
+    /// Re-run: `cargo test -- --ignored demo_backup_layout_on_tmp`
     #[test]
+    #[ignore = "writes /tmp/lumi-m10-3-demo; run with --ignored"]
     fn demo_backup_layout_on_tmp() {
         let root = Path::new("/tmp/lumi-m10-3-demo");
         let _ = fs::remove_dir_all(root);

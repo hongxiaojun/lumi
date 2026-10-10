@@ -243,6 +243,46 @@ describe('migrateLegacyBooks (M10-3)', () => {
     expect(decodeBody(logCall![1])).toMatch(/bad-1 Bad size mismatch/)
   })
 
+  it('concurrent calls share one in-flight run: write_book_file once per book', async () => {
+    setTauri(false)
+    await putBook(makeBook({ id: 'ok-1', title: 'Good', fileName: 'good.epub' }))
+    await putBook(
+      makeBook({
+        id: 'ok-2',
+        title: 'Also',
+        fileName: 'also.epub',
+        file: new Blob([new Uint8Array([5, 6])]),
+      }),
+    )
+    setTauri(true)
+
+    let backupDirs = new Set<string>()
+    invokeMock.mockImplementation(async (cmd: string, arg?: unknown, opts?: { headers?: Record<string, string> }) => {
+      // Yield so both callers can enter before the first finishes.
+      await Promise.resolve()
+      if (cmd === 'backup_book_file') {
+        backupDirs.add(opts!.headers!['x-backup-dir'])
+        return `/backup/${opts!.headers!['x-book-id']}.epub`
+      }
+      if (cmd === 'write_migration_text') return undefined
+      if (cmd === 'write_book_file') return `/books/${opts!.headers!['x-book-id']}.epub`
+      if (cmd === 'read_book_file') {
+        const id = (arg as { id: string }).id
+        return (id === 'ok-1' ? new Uint8Array([1, 2, 3, 4]) : new Uint8Array([5, 6])).buffer
+      }
+      throw new Error(`unexpected ${cmd}`)
+    })
+
+    await Promise.all([migrateLegacyBooks(), migrateLegacyBooks()])
+
+    const writes = invokeMock.mock.calls.filter((c) => c[0] === 'write_book_file')
+    expect(writes).toHaveLength(2)
+    const writeIds = writes.map((c) => (c[2] as { headers: Record<string, string> }).headers['x-book-id']).sort()
+    expect(writeIds).toEqual(['ok-1', 'ok-2'])
+    expect(backupDirs.size).toBe(1)
+    expect(invokeMock.mock.calls.filter((c) => c[0] === 'backup_book_file')).toHaveLength(2)
+  })
+
   it('second run is idempotent: already filePath books skip invoke', async () => {
     setTauri(true)
     // Seed as already migrated (direct IDB via non-Tauri put then manually patch — use putBook with filePath)
