@@ -1,16 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LibraryBook } from '../types'
-import {
-  AUDIOBOOK_WAITING,
-  addAudiobook,
-  audiobookGesture,
-  readAudiobookIds,
-  removeAudiobook,
-  writeAudiobookIds,
-} from '../lib/audiobookShelf'
-
+import { shelfMarks } from '../lib/format'
 import { featuredBookId, plankRows, plankSize } from '../lib/shelfMotion'
-import { parseFractionOf } from '../lib/parseGate'
+import { parseCaption, parseFractionOf } from '../lib/parseGate'
 import {
   SHELF_INDEX,
   booksInSection,
@@ -24,10 +16,9 @@ import {
 } from '../lib/shelfIndex'
 import { browserShelfStorage, readShelfView, writeShelfView, type ShelfView } from '../lib/shelfView'
 import { CoverShelf } from './CoverShelf'
-import { ShelfCaption } from './ShelfCaption'
-import { LibraryBanners } from './LibraryBanners'
 import { ShelfIndex } from './ShelfIndex'
 import { LeafLogo } from './LeafLogo'
+import { ParseBar } from './ParseBar'
 import { ShelfBook } from './ShelfBook'
 import { UserFontsPanel, type UserFontChoice } from './UserFontsPanel'
 import '../shelf.css'
@@ -78,25 +69,14 @@ export function Library({
   const [entered, setEntered] = useState(false)
   const [view, setView] = useState<ShelfView>(() => readShelfView(browserShelfStorage()))
   const [section, setSection] = useState<ShelfSection>(() => readShelfSection(browserShelfStorage()))
-  const [audiobookIds, setAudiobookIds] = useState(() => readAudiobookIds(browserShelfStorage()))
   const [fontsOpen, setFontsOpen] = useState(false)
-  const shownBooks = booksInSection(books, section, audiobookIds)
-  const counts = sectionCounts(books, audiobookIds)
+  const shownBooks = booksInSection(books, section)
+  const counts = sectionCounts(books)
   const sectionLabel = SHELF_INDEX.find((item) => item.id === section)?.label ?? '我的藏书'
-  const continueKicker = section === 'finished' ? '已读完' : section === 'audiobook' ? '有声书' : '继续阅读'
+  const continueKicker = section === 'finished' ? '已读完' : '继续阅读'
   const markPhrase = shelfMarkPhrase(section)
-  const canJoin = audiobookGesture(section) === 'join'
-  function rememberAudiobooks(update: (current: string[]) => string[]) {
-    setAudiobookIds((current) => {
-      const next = update(current)
-      writeAudiobookIds(browserShelfStorage(), next)
-      return next
-    })
-  }
   function markBook(id: string) {
-    const mark = shelfMark(section)
-    if (mark === 'delete') onRemove(id)
-    else if (mark === 'leave') rememberAudiobooks((current) => removeAudiobook(current, id))
+    if (shelfMark(section) === 'delete') onRemove(id)
     else onDrop(id)
   }
   const shelfEmpty = shownBooks.length === 0
@@ -106,6 +86,7 @@ export function Library({
   const featuredBook = shownBooks.find((book) => book.id === featured) ?? null
   const opened = shownBooks.filter((book) => book.lastOpenedAt)
   const recentId = opened.length > 0 ? featuredBookId(opened, null) : null
+  const marks = featuredBook ? shelfMarks(featuredBook) : null
   const featuredParsing = featuredBook ? parseFractionOf(parseGates, featuredBook.id) : null
   const turned = shown ? featured : null
 
@@ -213,24 +194,54 @@ export function Library({
         />
       ) : null}
 
-      <LibraryBanners parsePending={parsePending} notice={notice} onDismissNotice={onDismissNotice} />
+      {parsePending ? (
+        <div className="parse-banner" role="status">
+          <p>
+            正在解析《{parsePending.name}》
+            {' · '}
+            {parseCaption(parsePending.fraction)}
+          </p>
+          <ParseBar fraction={parsePending.fraction} />
+        </div>
+      ) : null}
+
+      {notice && (
+        <div className="import-notice" role="alert">
+          <p>{notice}</p>
+          <button type="button" onClick={onDismissNotice} aria-label="关闭导入提示">
+            关闭
+          </button>
+        </div>
+      )}
 
       <h1 className="shelf-title">{sectionLabel}</h1>
-      {section === 'audiobook' && shownBooks.length > 0 ? <p className="shelf-waiting">{AUDIOBOOK_WAITING}</p> : null}
 
-      {view === 'stand' && featuredBook ? (
-        <ShelfCaption
-          book={featuredBook}
-          parsing={featuredParsing}
-          continueKicker={continueKicker}
-          selected={chosen === featuredBook.id}
-          recent={featuredBook.id === recentId}
-          joined={audiobookIds.includes(featuredBook.id)}
-          onOpen={onOpen}
-          onJoin={
-            canJoin ? () => rememberAudiobooks((current) => addAudiobook(current, featuredBook.id)) : undefined
-          }
-        />
+      {view === 'stand' && featuredBook && marks ? (
+        <button
+          className="shelf-caption"
+          type="button"
+          disabled={featuredParsing !== null}
+          onClick={() => {
+            if (featuredParsing === null) onOpen(featuredBook.id)
+          }}
+        >
+          <div className="kicker">
+            {featuredParsing !== null
+              ? parseCaption(featuredParsing)
+              : featuredBook.id === recentId
+                ? continueKicker
+                : chosen === featuredBook.id
+                  ? '选中的书'
+                  : '书架'}
+          </div>
+          <h2>{featuredBook.title}</h2>
+          {featuredBook.author ? <p>{featuredBook.author}</p> : null}
+          <p className="book-note">
+            上次打开 {marks.opened}
+            {' · '}
+            {marks.progress === '已经读完' ? '已经阅读' : `阅读进度 ${marks.progress}`}
+          </p>
+        </button>
       ) : null}
 
       {books.length === 0 ? (
@@ -253,10 +264,8 @@ export function Library({
             parseGates={parseGates}
             continueKicker={continueKicker}
             removeLabel={markPhrase}
-            joinedIds={audiobookIds}
             onOpen={onOpen}
             onRemove={markBook}
-            onJoin={canJoin ? (id) => rememberAudiobooks((current) => addAudiobook(current, id)) : undefined}
           />
         ) : (
           <div className="shelves" ref={shelfRef}>

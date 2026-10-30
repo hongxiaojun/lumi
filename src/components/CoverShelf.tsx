@@ -1,7 +1,6 @@
 import type { LibraryBook } from '../types'
 import { shelfMarks } from '../lib/format'
 import { parseCaption, parseFractionOf } from '../lib/parseGate'
-import { AudiobookJoin } from './AudiobookJoin'
 import { ParseBar } from './ParseBar'
 import '../cover.css'
 
@@ -22,10 +21,8 @@ type Props = {
   parseGates?: Record<string, number>
   continueKicker?: string
   removeLabel?: string
-  joinedIds?: readonly string[]
   onOpen: (id: string) => void
   onRemove: (id: string) => void
-  onJoin?: (id: string) => void
 }
 
 function latestOpened(books: readonly LibraryBook[]): LibraryBook | null {
@@ -74,10 +71,8 @@ export function CoverShelf({
   parseGates,
   continueKicker = '继续阅读',
   removeLabel = '从书架移除',
-  joinedIds,
   onOpen,
   onRemove,
-  onJoin,
 }: Props) {
   const recent = latestOpened(books)
   const recentMarks = recent ? shelfMarks(recent) : null
@@ -140,14 +135,6 @@ export function CoverShelf({
             >
               ×
             </button>
-            {onJoin ? (
-              <AudiobookJoin
-                title={book.title}
-                joined={joinedIds?.includes(book.id) ?? false}
-                disabled={parsing !== null}
-                onJoin={() => onJoin(book.id)}
-              />
-            ) : null}
           </article>
           )
         })}
