@@ -37,6 +37,27 @@ describe('pagesToChapters', () => {
     expect(chapters).toHaveLength(1)
     expect(chapters[0].html).toContain('正文开始')
   })
+
+  it('keeps a figure between the lines above and below it', () => {
+    const pages = [[
+      run('上面的字。', 72, 500),
+      run('下面的字。', 72, 200),
+    ]]
+    const figures = [[{ top: 360, name: 'img/p001-1.jpg', bytes: new Uint8Array([0xff, 0xd8]) }]]
+    const html = pagesToChapters(pages, [800], '书', undefined, undefined, figures)[0].html
+    const above = html.indexOf('上面的字')
+    const img = html.indexOf('src="img/p001-1.jpg"')
+    const below = html.indexOf('下面的字')
+    expect(above).toBeGreaterThanOrEqual(0)
+    expect(above).toBeLessThan(img)
+    expect(img).toBeLessThan(below)
+  })
+
+  it('keeps a page that has only a figure', () => {
+    const figures = [[{ top: 400, name: 'img/p001-1.jpg', bytes: new Uint8Array([0xff, 0xd8]) }]]
+    const chapters = pagesToChapters([[]], [800], '书', [0], undefined, figures)
+    expect(chapters[0].html).toContain('<img src="img/p001-1.jpg"')
+  })
 })
 
 
@@ -73,4 +94,37 @@ describe('pdfToEpubFile', () => {
     expect(text).toContain('Hello world')
     expect(text).toContain('epub:type="toc"')
   })
+
+  it('stores a figure JPEG beside the chapter that shows it', async () => {
+    const jpeg = new Uint8Array([0xff, 0xd8, 0x11, 0xff, 0xd9])
+    const file = pdfToEpubFile({
+      title: '图',
+      author: 'PDF',
+      language: 'zh',
+      pages: [[run('上文。', 40, 300)]],
+      heights: [800],
+      figures: [[{ top: 200, name: 'img/p001-1.jpg', bytes: jpeg }]],
+    })
+    const buf = new Uint8Array(await file.arrayBuffer())
+    const text = new TextDecoder().decode(buf)
+    expect(text).toContain('<img src="img/p001-1.jpg" alt=""/>')
+    const start = text.indexOf('<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh">')
+    const chapter = text.slice(start - 39, text.indexOf('</html>', start) + '</html>'.length)
+    const doc = new DOMParser().parseFromString(chapter, 'application/xhtml+xml')
+    expect(doc.querySelector('parsererror')).toBeNull()
+    expect(doc.querySelector('img')?.getAttribute('src')).toBe('img/p001-1.jpg')
+    expect(text).toContain('image/jpeg')
+    expect(buf.indexOf(0xff)).toBeGreaterThanOrEqual(0)
+    const at = findBytes(buf, jpeg)
+    expect(at).toBeGreaterThan(0)
+  })
 })
+
+function findBytes(hay: Uint8Array, needle: Uint8Array): number {
+  for (let i = 0; i <= hay.length - needle.length; i += 1) {
+    let ok = true
+    for (let j = 0; j < needle.length; j += 1) if (hay[i + j] !== needle[j]) ok = false
+    if (ok) return i
+  }
+  return -1
+}

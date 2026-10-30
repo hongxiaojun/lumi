@@ -1,10 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LibraryBook } from '../types'
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+  convertFileSrc: (path: string, protocol = 'asset') => `${protocol}://localhost/${encodeURIComponent(path)}`,
+}))
 
 import { invoke } from '@tauri-apps/api/core'
-import { deleteBook, getBook, putBook } from './db'
+import { BOOK_FETCH_CHUNK } from './ipcBytes'
+import { DEFAULT_PREFS } from './styles'
+import { userFontId, type UserFont } from './userFonts'
+import {
+  deleteBook,
+  getBook,
+  loadLocalBookLook,
+  loadUserFonts,
+  putBook,
+  replaceLocalLookFonts,
+  saveLocalBookLook,
+  saveUserFonts,
+} from './db'
 
 const invokeMock = vi.mocked(invoke)
 
@@ -122,13 +137,25 @@ describe('db book storage (M10-2)', () => {
   it('Tauri: putBook writes raw bytes with x-book-id/x-book-ext headers and stores filePath without file Blob', async () => {
     setTauri(true)
     invokeMock.mockResolvedValueOnce('/books/book-1.epub')
-    await putBook(makeBook())
-    expect(invokeMock).toHaveBeenCalledTimes(1)
+    await putBook(makeBook({ title: '经济学的思维方式', author: '保罗·海恩', fileName: '经济学的思维方式.epub' }))
+    expect(invokeMock).toHaveBeenCalledTimes(2)
     const [cmd, body, options] = invokeMock.mock.calls[0]
     expect(cmd).toBe('write_book_file')
     expect(body).toBeInstanceOf(Uint8Array)
     expect(Array.from(body as Uint8Array)).toEqual([1, 2, 3, 4])
     expect(options).toEqual({ headers: { 'x-book-id': 'book-1', 'x-book-ext': 'epub' } })
+    const [metaCmd, metaBody, metaOptions] = invokeMock.mock.calls[1]
+    expect(metaCmd).toBe('write_book_meta')
+    const meta = JSON.parse(new TextDecoder().decode(metaBody as Uint8Array)) as Row
+    expect(meta).toMatchObject({
+      id: 'book-1',
+      title: '经济学的思维方式',
+      author: '保罗·海恩',
+      fileName: '经济学的思维方式.epub',
+    })
+    expect(meta.fraction).toBeUndefined()
+    expect(meta.cfi).toBeUndefined()
+    expect(metaOptions).toEqual({ headers: { 'x-book-id': 'book-1' } })
     const stored = idb.rows('books').get('book-1') as Row
     expect(stored.filePath).toBe('/books/book-1.epub')
     expect('file' in stored).toBe(false)
@@ -144,7 +171,7 @@ describe('db book storage (M10-2)', () => {
   it('Tauri: putBook with existing filePath does not rewrite the file', async () => {
     setTauri(true)
     await putBook(makeBook({ filePath: '/books/book-1.epub', fraction: 0.5 }))
-    expect(invokeMock).not.toHaveBeenCalled()
+    expect(invokeMock.mock.calls.map((call) => call[0])).toEqual(['write_book_meta'])
     const stored = idb.rows('books').get('book-1') as Row
     expect(stored.fraction).toBe(0.5)
     expect('file' in stored).toBe(false)
@@ -176,14 +203,61 @@ describe('db book storage (M10-2)', () => {
     expect(stored.fraction).toBe(0.3)
   })
 
-  it('Tauri: getBook reads bytes via read_book_file', async () => {
+  it('Tauri: getBook reads the file through leafbook ranges', async () => {
     setTauri(true)
     await putBook(makeBook({ filePath: '/books/book-1.epub' }))
-    invokeMock.mockResolvedValueOnce(new Uint8Array([9, 8, 7]).buffer)
+    invokeMock.mockClear()
+    const fetchMock = vi.fn(async () => ({
+      status: 206,
+      headers: { get: () => 'bytes 0-2/3' },
+      arrayBuffer: async () => new Uint8Array([9, 8, 7]).buffer,
+    }))
+    vi.stubGlobal('fetch', fetchMock)
     const got = await getBook('book-1')
-    expect(invokeMock).toHaveBeenCalledWith('read_book_file', { id: 'book-1', ext: 'epub' })
+    expect(fetchMock).toHaveBeenCalledWith('leafbook://localhost/book-1.epub', {
+      headers: { Range: `bytes=0-${BOOK_FETCH_CHUNK - 1}` },
+    })
+    expect(invokeMock).not.toHaveBeenCalled()
     expect(Array.from(new Uint8Array(await got!.file.arrayBuffer()))).toEqual([9, 8, 7])
+    expect(got?.file).toBeInstanceOf(File)
+    expect((got?.file as File).name).toBe('Story.EPUB')
     expect(got?.filePath).toBe('/books/book-1.epub')
+  })
+
+  it('Tauri: getBook falls back to read_book_file when leafbook fails', async () => {
+    setTauri(true)
+    await putBook(makeBook({ filePath: '/books/book-1.epub' }))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 500, headers: { get: () => null }, arrayBuffer: async () => new ArrayBuffer(0) })))
+    invokeMock.mockResolvedValueOnce([80, 75, 3, 4])
+    const got = await getBook('book-1')
+    expect(invokeMock).toHaveBeenCalledWith('read_book_file', {
+      id: 'book-1',
+      ext: 'epub',
+      offset: 0,
+      length: 128 * 1024,
+    })
+    expect(Array.from(new Uint8Array(await got!.file.arrayBuffer()))).toEqual([80, 75, 3, 4])
+    expect(got?.file).toBeInstanceOf(File)
+    expect((got?.file as File).name).toBe('Story.EPUB')
+  })
+
+  it('stores a new cover Blob and keeps it when a later write has none', async () => {
+    setTauri(false)
+    const cover = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })
+    await putBook(makeBook({ cover }))
+    const stored = idb.rows('books').get('book-1') as Row
+    expect(stored.cover).toBeInstanceOf(Blob)
+    expect(stored.cover).not.toBe(cover)
+    expect(Array.from(new Uint8Array(await (stored.cover as Blob).arrayBuffer()))).toEqual([1, 2, 3])
+
+    await putBook(makeBook({ cover: null, fraction: 0.2 }))
+    const kept = idb.rows('books').get('book-1') as Row
+    expect(Array.from(new Uint8Array(await (kept.cover as Blob).arrayBuffer()))).toEqual([1, 2, 3])
+
+    await putBook(makeBook({ cover: new Blob([]), fraction: 0.4 }))
+    const still = idb.rows('books').get('book-1') as Row
+    expect(Array.from(new Uint8Array(await (still.cover as Blob).arrayBuffer()))).toEqual([1, 2, 3])
+    expect(still.fraction).toBe(0.4)
   })
 
   it('Tauri: deleteBook removes file then metadata', async () => {
@@ -193,6 +267,39 @@ describe('db book storage (M10-2)', () => {
     await deleteBook('book-1')
     expect(invokeMock).toHaveBeenCalledWith('delete_book_file', { id: 'book-1', ext: 'epub' })
     expect(idb.rows('books').has('book-1')).toBe(false)
+  })
+
+  it('keeps an added face on this Mac and changes only the font of saved looks', async () => {
+    setTauri(false)
+    expect(await loadUserFonts()).toEqual([])
+    const face: UserFont = {
+      id: 'abcd',
+      name: '仓耳今楷',
+      format: 'truetype',
+      bytes: new Uint8Array([0, 1, 2, 255]),
+      addedAt: 5,
+    }
+    await saveUserFonts([face])
+    const loaded = await loadUserFonts()
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0]?.name).toBe('仓耳今楷')
+    expect(loaded[0]?.bytes).toBeInstanceOf(Uint8Array)
+    expect(Array.from(loaded[0]?.bytes ?? [])).toEqual([0, 1, 2, 255])
+
+    await saveLocalBookLook('novel', {
+      ...DEFAULT_PREFS,
+      font: 'song',
+      fontSize: 18,
+      theme: 'night',
+      focusRead: true,
+    })
+    await replaceLocalLookFonts(userFontId(face.id))
+    const look = await loadLocalBookLook('novel')
+    expect(look?.font).toBe('user:abcd')
+    expect(look?.fontSize).toBe(18)
+    expect(look?.theme).toBe('night')
+    expect(look?.lineHeight).toBe(DEFAULT_PREFS.lineHeight)
+    expect(look?.focusRead).toBe(true)
   })
 
   it('Tauri: deleteBook keeps metadata when delete_book_file fails', async () => {

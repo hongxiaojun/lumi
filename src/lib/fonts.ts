@@ -52,7 +52,7 @@ export function hostedFontFaces(origin: string): string {
   return HOSTED_FONTS.map((font) => {
     const href = new URL(font.file, origin).href
     const locals = font.locals.map((name) => `local("${name}")`).join(',')
-    return `@font-face{font-family:"${font.family}";font-weight:400;font-style:normal;font-display:swap;src:${locals},url("${href}") format("${font.format}");}`
+    return `@font-face{font-family:"${font.family}";font-weight:100 900;font-style:normal;font-display:swap;src:${locals},url("${href}") format("${font.format}");}`
   }).join('\n')
 }
 
@@ -85,7 +85,8 @@ async function face(
   const res = await fetch(url)
   if (!res.ok) throw new Error(`字体加载失败: ${family}`)
   const b64 = toBase64(await res.arrayBuffer())
-  return `@font-face{font-family:"${family}";font-weight:${weight};font-style:${style};font-display:swap;src:url(data:font/woff2;base64,${b64}) format("woff2");}`
+  const range = style === 'italic' ? String(weight) : `${weight} 900`
+  return `@font-face{font-family:"${family}";font-weight:${range};font-style:${style};font-display:swap;src:url(data:font/woff2;base64,${b64}) format("woff2");}`
 }
 
 function toBase64(buffer: ArrayBuffer): string {

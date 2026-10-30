@@ -252,33 +252,40 @@ class View {
     }
     async load(src, afterLoad, beforeRender) {
         if (typeof src !== 'string') throw new Error(`${src} is not string`)
-        return new Promise(resolve => {
-            this.#iframe.addEventListener('load', () => {
+        return new Promise((resolve, reject) => {
+            const onLoad = () => {
                 const doc = this.document
-                afterLoad?.(doc)
+                if (!doc?.documentElement || !doc.body) return
+                this.#iframe.removeEventListener('load', onLoad)
+                try {
+                    afterLoad?.(doc)
 
-                // it needs to be visible for Firefox to get computed style
-                this.#iframe.style.display = 'block'
-                const { vertical, rtl } = getDirection(doc)
-                const background = getBackground(doc)
-                this.#iframe.style.display = 'none'
+                    // it needs to be visible for Firefox to get computed style
+                    this.#iframe.style.display = 'block'
+                    const { vertical, rtl } = getDirection(doc)
+                    const background = getBackground(doc)
+                    this.#iframe.style.display = 'none'
 
-                this.#vertical = vertical
-                this.#rtl = rtl
+                    this.#vertical = vertical
+                    this.#rtl = rtl
 
-                this.#contentRange.selectNodeContents(doc.body)
-                const layout = beforeRender?.({ vertical, rtl, background })
-                this.#iframe.style.display = 'block'
-                this.render(layout)
-                this.#observer.observe(doc.body)
+                    this.#contentRange.selectNodeContents(doc.body)
+                    const layout = beforeRender?.({ vertical, rtl, background })
+                    this.#iframe.style.display = 'block'
+                    this.render(layout)
+                    this.#observer.observe(doc.body)
 
-                // the resize observer above doesn't work in Firefox
-                // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
-                // until the bug is fixed we can at least account for font load
-                doc.fonts.ready.then(() => this.expand())
+                    // the resize observer above doesn't work in Firefox
+                    // (see https://bugzilla.mozilla.org/show_bug.cgi?id=1832939)
+                    // until the bug is fixed we can at least account for font load
+                    doc.fonts.ready.then(() => this.expand())
 
-                resolve()
-            }, { once: true })
+                    resolve()
+                } catch (error) {
+                    reject(error)
+                }
+            }
+            this.#iframe.addEventListener('load', onLoad)
             this.#iframe.src = src
         })
     }
@@ -421,6 +428,18 @@ class View {
 }
 
 // NOTE: everything here assumes the so-called "negative scroll type" for RTL
+
+// A long page can report a box wider than the window. Column width must use
+// the part that is still on screen, or the window clips the line ends.
+export function visibleSize(box, host) {
+    const left = Math.max(box.left, host.left)
+    const top = Math.max(box.top, host.top)
+    return {
+        width: Math.min(box.width, Math.max(0, host.right - left)),
+        height: Math.min(box.height, Math.max(0, host.bottom - top)),
+    }
+}
+
 export class Paginator extends HTMLElement {
     static observedAttributes = [
         'flow', 'gap', 'margin',
@@ -462,6 +481,9 @@ export class Paginator extends HTMLElement {
             overflow: hidden;
             width: 100%;
             height: 100%;
+            /* A wide iframe must not keep the column from shrinking. */
+            min-width: 0;
+            min-height: 0;
         }
         #top {
             --_gap: 7%;
@@ -507,6 +529,9 @@ export class Paginator extends HTMLElement {
             grid-column: 2 / 5;
             grid-row: 2;
             overflow: hidden;
+            /* Shrink below the iframe so ResizeObserver sees the new column. */
+            min-width: 0;
+            min-height: 0;
         }
         :host([flow="scrolled"]) #container {
             grid-column: 1 / -1;
@@ -555,6 +580,7 @@ export class Paginator extends HTMLElement {
         this.#header = this.#root.getElementById('header')
         this.#footer = this.#root.getElementById('footer')
 
+        this.#observer.observe(this)
         this.#observer.observe(this.#container)
         this.#container.addEventListener('scroll', () => this.dispatchEvent(new Event('scroll')))
         this.#container.addEventListener('scroll', debounce(() => {
@@ -594,8 +620,17 @@ export class Paginator extends HTMLElement {
         }, 700)
         this.addEventListener('load', ({ detail: { doc } }) => {
             let isPointerSelecting = false
-            doc.addEventListener('pointerdown', () => isPointerSelecting = true)
+            let fromPointer = false
+            doc.addEventListener('pointerdown', () => {
+                isPointerSelecting = true
+                fromPointer = true
+            })
             doc.addEventListener('pointerup', () => isPointerSelecting = false)
+            doc.addEventListener('pointercancel', () => {
+                isPointerSelecting = false
+                fromPointer = false
+            })
+            doc.addEventListener('click', () => { fromPointer = false })
             let isKeyboardSelecting = false
             doc.addEventListener('keydown', () => isKeyboardSelecting = true)
             doc.addEventListener('keyup', () => isKeyboardSelecting = false)
@@ -614,9 +649,13 @@ export class Paginator extends HTMLElement {
                     this.#scrollToAnchor(selRange)
                 }
             })
-            doc.addEventListener('focusin', e => this.scrolled ? null :
-                // NOTE: `requestAnimationFrame` is needed in WebKit
-                requestAnimationFrame(() => this.#scrollToAnchor(e.target)))
+            doc.addEventListener('focusin', e => {
+                // A click focuses the paragraph under the pointer. Following that
+                // element's first column turns the page. Keyboard focus still follows.
+                // `requestAnimationFrame` is needed in WebKit.
+                if (this.scrolled || fromPointer) return
+                requestAnimationFrame(() => this.#scrollToAnchor(e.target))
+            })
         })
 
         this.#mediaQueryListener = () => {
@@ -684,7 +723,8 @@ export class Paginator extends HTMLElement {
         // this is needed because the iframe does not fill the whole element
         this.#background.style.background = background
 
-        const { width, height } = this.#container.getBoundingClientRect()
+        const fitted = visibleSize(this.#container.getBoundingClientRect(), this.getBoundingClientRect())
+        const { width, height } = fitted
         const size = vertical ? height : width
 
         const style = getComputedStyle(this.#top)
@@ -753,6 +793,8 @@ export class Paginator extends HTMLElement {
     }
     render() {
         if (!this.#view) return
+        const host = this.getBoundingClientRect()
+        if (host.width < 2 || host.height < 2) return
         this.#view.render(this.#beforeRender({
             vertical: this.#vertical,
             rtl: this.#rtl,
@@ -1015,7 +1057,7 @@ export class Paginator extends HTMLElement {
                 .catch(e => {
                     console.warn(e)
                     console.warn(new Error(`Failed to load section ${index}`))
-                    return {}
+                    throw e
                 }))
         }
     }
@@ -1120,9 +1162,10 @@ export class Paginator extends HTMLElement {
     }
     destroy() {
         this.#observer.unobserve(this)
-        this.#view.destroy()
+        // #view is created when the first section is shown. Closing before that is normal.
+        this.#view?.destroy()
         this.#view = null
-        this.sections[this.#index]?.unload?.()
+        this.sections?.[this.#index]?.unload?.()
         this.#mediaQuery.removeEventListener('change', this.#mediaQueryListener)
     }
 }

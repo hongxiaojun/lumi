@@ -62,6 +62,13 @@ describe('Chinese restyle — other wrap shapes', () => {
     expect(paras(html)[0]).toContain('甚至能够')
   })
 
+  it('keeps a mixed sentence intact instead of inserting a space', () => {
+    const html = '<p>用Lumi读《1984》，价格是¥36。</p>'
+    const doc = parse(html)
+    restyleDocument(doc, 'zh')
+    expect(doc.querySelector('p')?.textContent).toBe('用Lumi读《1984》，价格是¥36。')
+  })
+
   it('unwraps a CJK br inside one paragraph', () => {
     const html = '<p>可能看法会截然不同，甚<br/>至能够找到更优质的解决方法。</p>'
     const doc = parse(html)

@@ -1,5 +1,7 @@
 import { hostedStack } from './fonts'
-import type { FontId, Prefs, Theme, ThemeId } from '../types'
+import { readFocusCSS } from './readFocus'
+import { isUserFontId, userFontStack } from './userFonts'
+import type { BuiltinFontId, FontId, Prefs, Theme, ThemeId } from '../types'
 
 export const THEMES: Theme[] = [
   { id: 'white', name: '白', bg: '#FFFFFF', fg: '#1F1F1F', muted: '#8A8A8A' },
@@ -15,7 +17,7 @@ export const THEMES: Theme[] = [
   { id: 'dusk', name: '暮蓝', bg: '#1B2330', fg: '#C5CDD8', muted: '#7A8494', dark: true },
 ]
 
-export const FONTS: { id: FontId; name: string; stack: string }[] = [
+export const FONTS: { id: BuiltinFontId; name: string; stack: string }[] = [
   {
     id: 'song',
     name: '思源宋体',
@@ -40,6 +42,22 @@ export const FONTS: { id: FontId; name: string; stack: string }[] = [
     id: 'kai',
     name: '楷体',
     stack: '"Kaiti SC", "STKaiti", "KaiTi", "Noto Serif SC", serif',
+  },
+  {
+    id: 'localkai',
+    name: '仓耳今楷',
+    stack: [
+      '"仓耳今楷02-6763 W04"',
+      '"仓耳今楷02-6763 W01"',
+      '"仓耳今楷04-6763 W03"',
+      '"仓耳今楷04-6763 W02"',
+      '"仓耳今楷04-6763 W01"',
+      '"TsangerJinKai02-6763 W04"',
+      '"Kaiti SC"',
+      '"STKaiti"',
+      '"KaiTi"',
+      'serif',
+    ].join(', '),
   },
   {
     id: 'wenkai',
@@ -75,12 +93,13 @@ export const FONTS: { id: FontId; name: string; stack: string }[] = [
 
 export const DEFAULT_PREFS: Prefs = {
   theme: 'paper',
-  font: 'song',
+  font: 'localkai',
   fontSize: 20,
   lineHeight: 1.9,
   flow: 'paginated',
   justify: true,
   parallel: true,
+  focusRead: false,
 }
 
 export function themeOf(id: ThemeId): Theme {
@@ -88,15 +107,31 @@ export function themeOf(id: ThemeId): Theme {
 }
 
 export function fontStack(id: FontId): string {
+  if (isUserFontId(id)) return userFontStack(id)
   return FONTS.find((f) => f.id === id)?.stack ?? FONTS[0].stack
 }
 
-const CJK_FONTS: ReadonlySet<FontId> = new Set([
+/** One face for every weight. A bold request otherwise walks the stack and
+ *  picks a different cut, so the advances and punctuation no longer match. */
+export function pinnedBodyFace(stack: string): { family: string; css: string } {
+  const names = [...stack.matchAll(/"([^"]+)"/g)].map((match) => match[1])
+  // An added font is an @font-face in the book, not a face installed on the Mac.
+  // local() cannot see it, so pinning that name falls through to Songti and
+  // every added face looks the same.
+  if (names.some((name) => name.startsWith('leaf-user-'))) return { family: stack, css: '' }
+  const locals = names.map((name) => `local("${name}")`)
+  if (locals.length === 0) return { family: stack, css: '' }
+  const css = `@font-face{font-family:"leaf-body";font-weight:100 900;font-style:normal;font-display:swap;src:${locals.join(',')};}`
+  return { family: `"leaf-body", ${stack}`, css }
+}
+
+const CJK_FONTS: ReadonlySet<BuiltinFontId> = new Set([
   'song',
   'kinghwa',
   'fang',
   'zhuque',
   'kai',
+  'localkai',
   'wenkai',
   'hei',
   'yuan',
@@ -106,7 +141,7 @@ const CJK_FONTS: ReadonlySet<FontId> = new Set([
 export type TypesetScript = 'zh' | 'en'
 
 export function fontForScript(font: FontId, script: TypesetScript): FontId {
-  if (script === 'en' && CJK_FONTS.has(font)) return 'newsreader'
+  if (script === 'en' && (isUserFontId(font) || CJK_FONTS.has(font as BuiltinFontId))) return 'newsreader'
   return font
 }
 
@@ -117,13 +152,22 @@ export function themeForScript(theme: ThemeId, script: TypesetScript): ThemeId {
   return theme
 }
 
+function emphasisCSS(script: TypesetScript): string {
+  // Same face and the same tracking as the paragraph. A heavier cut or an
+  // extra stroke fills the letter-spacing and makes the lines look tight.
+  const trim = script === 'zh' ? 'text-spacing-trim:inherit !important;' : ''
+  return `b,strong{font-family:inherit !important;font-size:inherit !important;font-weight:400 !important;font-synthesis:none !important;line-height:inherit !important;letter-spacing:inherit !important;word-spacing:inherit !important;text-autospace:inherit !important;${trim}font-kerning:inherit !important;line-break:inherit !important;text-shadow:none !important;-webkit-text-stroke:0 !important;}`
+}
+
 export function bookCSS(prefs: Prefs, script: TypesetScript = 'zh'): string {
   const theme = themeOf(prefs.theme)
   const stack = fontStack(prefs.font)
+  const bodyFace = pinnedBodyFace(stack)
   const dark = Boolean(theme.dark)
-  const type = script === 'en' ? englishType(prefs, stack, theme.fg) : chineseType(prefs, stack, theme.fg)
+  const type = script === 'en' ? englishType(prefs, stack, theme.fg) : chineseType(prefs, theme.fg)
   return `
     @namespace epub "http://www.idpf.org/2007/ops";
+    ${bodyFace.css}
     html {
       color-scheme: ${dark ? 'dark' : 'light'};
       background: ${theme.bg} !important;
@@ -131,16 +175,22 @@ export function bookCSS(prefs: Prefs, script: TypesetScript = 'zh'): string {
     body {
       color: ${theme.fg} !important;
       background: ${theme.bg} !important;
-      font-family: ${stack} !important;
+      font-family: ${bodyFace.family} !important;
       font-size: ${prefs.fontSize}px !important;
       font-weight: 400;
       letter-spacing: ${script === 'en' ? '0' : '0.02em'};
     }
     ${type}
+    ${emphasisCSS(script)}
     a { color: inherit; }
     pre, code {
       font-family: ui-monospace, "SF Mono", Menlo, monospace;
       text-indent: 0;
+      text-autospace: no-autospace;
+    }
+    img {
+      max-inline-size: 100%;
+      height: auto;
     }
     aside[epub|type~="endnote"],
     aside[epub|type~="footnote"],
@@ -158,11 +208,23 @@ export function bookCSS(prefs: Prefs, script: TypesetScript = 'zh'): string {
       margin: 0.15em 0 0.55em 0 !important;
       letter-spacing: 0.01em;
     }
+    ${readFocusCSS()}
   `
 }
 
-function chineseType(prefs: Prefs, stack: string, fg: string): string {
+function chineseType(prefs: Prefs, fg: string): string {
+  // Drawn by WebKit, not written into the sentence. text-autospace covers the
+  // VMark gaps between Han and Latin, digits, and punctuation. space-first
+  // squeezes fullwidth punctuation the way a paper page does, and keeps the
+  // opening mark at the start of a paragraph. strict keeps a closing mark
+  // on the same line as the word before it.
   return `
+    body {
+      text-autospace: normal;
+      text-spacing-trim: space-first;
+      line-break: strict;
+      font-kerning: normal;
+    }
     p, li, blockquote, dd {
       line-height: ${prefs.lineHeight} !important;
       text-align: ${prefs.justify ? 'justify' : 'start'};
@@ -176,7 +238,7 @@ function chineseType(prefs: Prefs, stack: string, fg: string): string {
     }
     li { text-indent: 0; }
     h1, h2, h3, h4 {
-      font-family: ${stack} !important;
+      font-family: inherit !important;
       font-weight: 600;
       text-indent: 0;
       text-align: center;
@@ -190,6 +252,11 @@ function chineseType(prefs: Prefs, stack: string, fg: string): string {
 
 function englishType(prefs: Prefs, stack: string, fg: string): string {
   return `
+    body {
+      text-autospace: no-autospace;
+      font-kerning: normal;
+      font-variant-ligatures: common-ligatures contextual;
+    }
     p, li, blockquote, dd {
       font-family: inherit !important;
       font-size: inherit !important;
@@ -198,6 +265,7 @@ function englishType(prefs: Prefs, stack: string, fg: string): string {
       -webkit-hyphens: auto;
       hyphens: auto;
       hyphenate-limit-chars: 6 3 3;
+      hyphenate-limit-lines: 2;
       text-indent: 0 !important;
       margin: 0 0 1.2em 0 !important;
       widows: 2;

@@ -32,6 +32,16 @@ export function clampFraction(n: number | null | undefined): number {
   return n
 }
 
+/** The cover badge and the shelf index share this line. */
+export const FINISHED_FRACTION = 0.98
+
+export function readingPlace(fraction: number | null | undefined): 'unread' | 'reading' | 'finished' {
+  const n = clampFraction(fraction)
+  if (n >= FINISHED_FRACTION) return 'finished'
+  if (n > 0) return 'reading'
+  return 'unread'
+}
+
 export function percentLabel(fraction: number | null | undefined): string {
   const n = clampFraction(fraction)
   return `${Math.round(n * 1000) / 10}%`
@@ -69,7 +79,8 @@ export function shelfMarks(
   now = Date.now(),
 ): { badge: '新导入' | '已读完' | null; opened: string; progress: string } {
   const fraction = clampFraction(book.fraction)
-  const finished = fraction >= 0.98
+  const place = readingPlace(fraction)
+  const finished = place === 'finished'
   const fresh =
     !book.lastOpenedAt &&
     fraction === 0 &&
@@ -77,7 +88,7 @@ export function shelfMarks(
     now - book.addedAt <= NEW_IMPORT
   let progress = '还没开始'
   if (finished) progress = '已经读完'
-  else if (fraction > 0) progress = percentLabel(fraction)
+  else if (place === 'reading') progress = percentLabel(fraction)
   return {
     badge: fresh ? '新导入' : finished ? '已读完' : null,
     opened: openedPhrase(book.lastOpenedAt, now),

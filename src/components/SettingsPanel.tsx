@@ -1,18 +1,27 @@
 import type { Prefs } from '../types'
 import { FONTS, THEMES } from '../lib/styles'
+import { userFontId } from '../lib/userFonts'
+import type { UserFontChoice } from './UserFontsPanel'
 
 type Props = {
   prefs: Prefs
+  userFonts?: UserFontChoice[]
+  parallel: boolean
   onChange: (prefs: Prefs) => void
+  onParallel: (on: boolean) => void
+  onEngine: () => void
   onClose: () => void
 }
 
-export function SettingsPanel({ prefs, onChange, onClose }: Props) {
+export function SettingsPanel({
+  prefs, userFonts = [], parallel, onChange, onParallel, onEngine, onClose,
+}: Props) {
   return (
     <div className="sheet" onClick={(e) => e.stopPropagation()}>
       <h3>阅读设置</h3>
       <div className="setting">
         <label>字体</label>
+        <p className="field-hint">添加自己的字体、并用于全部书，回到书架点「我的字体」。这里点一款字体只改当前这本书。</p>
         <div className="chips">
           {FONTS.map((f) => (
             <button
@@ -23,6 +32,18 @@ export function SettingsPanel({ prefs, onChange, onClose }: Props) {
               {f.name}
             </button>
           ))}
+          {userFonts.map((font) => {
+            const id = userFontId(font.id)
+            return (
+              <button
+                key={id}
+                className={`chip ${prefs.font === id ? 'on' : ''}`}
+                onClick={() => onChange({ ...prefs, font: id })}
+              >
+                {font.name}
+              </button>
+            )
+          })}
         </div>
       </div>
       <div className="setting">
@@ -64,7 +85,29 @@ export function SettingsPanel({ prefs, onChange, onClose }: Props) {
       </div>
       <div className="setting">
         <label>对照翻译</label>
-        <p className="field-hint">全英文书打开即对照；中文等其他语言默认关闭。阅读页可随时切换。</p>
+        <p className="field-hint">全英文书打开即对照；中文等其他语言默认关闭。这里可以随时切换。</p>
+        <div className="chips">
+          <button
+            className={`chip ${parallel ? 'on' : ''}`}
+            aria-pressed={parallel}
+            onClick={() => onParallel(true)}
+          >
+            开
+          </button>
+          <button
+            className={`chip ${parallel ? '' : 'on'}`}
+            aria-pressed={!parallel}
+            onClick={() => onParallel(false)}
+          >
+            关
+          </button>
+        </div>
+      </div>
+      <div className="setting">
+        <label>翻译引擎</label>
+        <div className="chips">
+          <button className="chip" onClick={onEngine}>选择引擎</button>
+        </div>
       </div>
       <div className="setting">
         <label>翻页</label>
@@ -80,6 +123,26 @@ export function SettingsPanel({ prefs, onChange, onClose }: Props) {
             onClick={() => onChange({ ...prefs, flow: 'scrolled' })}
           >
             滚动
+          </button>
+        </div>
+      </div>
+      <div className="setting">
+        <label>朗读时专注</label>
+        <p className="field-hint">默认关闭。只在大声朗读时，让当前段以外的段落退后。当前段的对照仍清楚。</p>
+        <div className="chips">
+          <button
+            className={`chip ${prefs.focusRead ? 'on' : ''}`}
+            aria-pressed={prefs.focusRead}
+            onClick={() => onChange({ ...prefs, focusRead: true })}
+          >
+            开
+          </button>
+          <button
+            className={`chip ${prefs.focusRead ? '' : 'on'}`}
+            aria-pressed={!prefs.focusRead}
+            onClick={() => onChange({ ...prefs, focusRead: false })}
+          >
+            关
           </button>
         </div>
       </div>

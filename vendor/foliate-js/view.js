@@ -17,15 +17,18 @@ const isPDF = async file => {
         && arr[4] === 0x2d
 }
 
+// A book read back from disk is a Blob until we wrap it. Blob has no name.
+const extOf = (name) => typeof name === 'string' ? name.toLowerCase() : ''
+
 const isCBZ = ({ name, type }) =>
-    type === 'application/vnd.comicbook+zip' || name.endsWith('.cbz')
+    type === 'application/vnd.comicbook+zip' || extOf(name).endsWith('.cbz')
 
 const isFB2 = ({ name, type }) =>
-    type === 'application/x-fictionbook+xml' || name.endsWith('.fb2')
+    type === 'application/x-fictionbook+xml' || extOf(name).endsWith('.fb2')
 
 const isFBZ = ({ name, type }) =>
     type === 'application/x-zip-compressed-fb2'
-    || name.endsWith('.fb2.zip') || name.endsWith('.fbz')
+    || extOf(name).endsWith('.fb2.zip') || extOf(name).endsWith('.fbz')
 
 const makeZipLoader = async file => {
     const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } =

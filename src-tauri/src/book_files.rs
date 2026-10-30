@@ -1,7 +1,8 @@
 //! M10-1: book source files on disk under `app_data_dir()/books/<id>.<ext>`.
-//! Bytes travel over Tauri's binary IPC (raw request body / raw response),
-//! never as a JSON number array.
+//! Writes use a raw request body. On macOS a raw reply is evaluated as one
+//! script, so reads come back in windows of at most `BOOK_READ_CHUNK` bytes.
 use std::fs;
+use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use tauri::ipc::{InvokeBody, Request, Response};
@@ -9,7 +10,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::ai_library::safe_join;
 
-fn books_root(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn books_root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("books"))
 }
 
@@ -36,9 +37,31 @@ pub(crate) fn write_in(root: &Path, id: &str, ext: &str, bytes: &[u8]) -> Result
     Ok(dest)
 }
 
+#[cfg(test)]
 pub(crate) fn read_in(root: &Path, id: &str, ext: &str) -> Result<Vec<u8>, String> {
     let path = safe_join(root, &file_name(id, ext)?)?;
     fs::read(path).map_err(|e| e.to_string())
+}
+
+pub(crate) const BOOK_READ_CHUNK: u64 = 128 * 1024;
+
+pub(crate) fn read_range(
+    root: &Path,
+    id: &str,
+    ext: &str,
+    offset: u64,
+    length: u64,
+) -> Result<Vec<u8>, String> {
+    if length == 0 || length > BOOK_READ_CHUNK {
+        return Err("bad read length".into());
+    }
+    let path = safe_join(root, &file_name(id, ext)?)?;
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; length as usize];
+    let n = crate::book_protocol::fill_read(&mut file, &mut buf).map_err(|e| e.to_string())?;
+    buf.truncate(n);
+    Ok(buf)
 }
 
 pub(crate) fn delete_in(root: &Path, id: &str, ext: &str) -> Result<(), String> {
@@ -71,13 +94,27 @@ pub fn write_book_file(app: AppHandle, request: Request<'_>) -> Result<String, S
 }
 
 #[tauri::command]
-pub fn read_book_file(app: AppHandle, id: String, ext: String) -> Result<Response, String> {
-    Ok(Response::new(read_in(&books_root(&app)?, &id, &ext)?))
+pub fn read_book_file(
+    app: AppHandle,
+    id: String,
+    ext: String,
+    offset: u64,
+    length: u64,
+) -> Result<Response, String> {
+    Ok(Response::new(read_range(
+        &books_root(&app)?,
+        &id,
+        &ext,
+        offset,
+        length,
+    )?))
 }
 
 #[tauri::command]
 pub fn delete_book_file(app: AppHandle, id: String, ext: String) -> Result<(), String> {
-    delete_in(&books_root(&app)?, &id, &ext)
+    let root = books_root(&app)?;
+    delete_in(&root, &id, &ext)?;
+    crate::book_catalog::delete_meta_in(&root, &id)
 }
 
 
@@ -165,6 +202,28 @@ pub fn write_migration_text(app: AppHandle, request: Request<'_>) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_range_returns_a_window_and_rejects_a_huge_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let bytes: Vec<u8> = (0..300_000).map(|i| (i % 251) as u8).collect();
+        write_in(dir.path(), "big", "epub", &bytes).unwrap();
+        let chunk = 128 * 1024;
+        let a = read_range(dir.path(), "big", "epub", 0, chunk).unwrap();
+        assert_eq!(a.len(), chunk as usize);
+        assert_eq!(a[0], bytes[0]);
+        assert_eq!(a[a.len() - 1], bytes[chunk as usize - 1]);
+        let b = read_range(dir.path(), "big", "epub", chunk, chunk).unwrap();
+        assert_eq!(b.len(), chunk as usize);
+        assert_eq!(b[0], bytes[chunk as usize]);
+        let tail = 300_000 - chunk * 2;
+        let c = read_range(dir.path(), "big", "epub", chunk * 2, chunk).unwrap();
+        assert_eq!(c.len(), tail as usize);
+        assert_eq!(c.as_slice(), &bytes[chunk as usize * 2..]);
+        assert!(read_range(dir.path(), "big", "epub", 300_000, chunk).unwrap().is_empty());
+        assert!(read_range(dir.path(), "big", "epub", 0, chunk + 1).is_err());
+        assert!(read_range(dir.path(), "big", "epub", 0, 0).is_err());
+    }
 
     #[test]
     fn write_read_roundtrip() {

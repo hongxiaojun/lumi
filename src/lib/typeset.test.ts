@@ -152,6 +152,14 @@ describe('restyleEnglishDocument', () => {
     expect(p.getAttribute('style')).not.toMatch(/font-family/)
   })
 
+  it('drops an inline bold weight so the body face keeps its spacing', () => {
+    const doc = parse('<p style="font-weight: bold; font-style: italic">金字塔原理就是</p>')
+    restyleEnglishDocument(doc)
+    const p = doc.querySelector('p')!
+    expect(p.getAttribute('style')).toBe('font-style: italic')
+    expect(p.getAttribute('style')).not.toMatch(/font-weight/)
+  })
+
   it('removes publisher stylesheets so reader CSS can take over', () => {
     const doc = parse(
       '<style>p{text-indent:2em}</style><link rel="stylesheet" href="book.css"><p>Hello</p>',

@@ -27,8 +27,9 @@ export async function buildAndPersist(
   foliate: FoliateLike,
   book: LibraryBook,
   allBooks: LibraryBook[],
+  onStep?: (done: number, total: number) => void,
 ): Promise<LibraryBook> {
-  const extracted = await extractFromFoliate(foliate, book)
+  const extracted = await extractFromFoliate(foliate, book, onStep)
   const taken = new Set(
     allBooks.filter((row) => row.id !== book.id).map((row) => row.aiSlug ?? bookSlug(row.title)),
   )

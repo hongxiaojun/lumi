@@ -1,3 +1,6 @@
+import { TAP_SLOP, type TapPlace } from './pageTap'
+import { paintReadFocus } from './readFocus'
+
 // Edge 大声朗读 walks the top document and splits text nodes while it speaks.
 // These nodes stay imperative so React never reconciles them, and a chapter
 // that has not changed is left untouched.
@@ -346,16 +349,24 @@ function clearPaint(painter: { remove: (key: string) => void }) {
   linePartCount = 0
 }
 
-function rangesForMark(sources: readonly Element[], mark: ReadAloudMark) {
+function spokenMatch(sources: readonly Element[], mark: ReadAloudMark) {
   const order = [mark.blockIndex]
   for (let i = 0; i < sources.length; i += 1) if (i !== mark.blockIndex) order.push(i)
   for (const index of order) {
     const source = sources[index]
     if (!source) continue
     const ranges = rangeForSpoken(source, mark.line, mark.word, mark.wordOffset)
-    if (ranges) return ranges
+    if (ranges) return { index, ranges }
   }
   return null
+}
+
+function rangesForMark(sources: readonly Element[], mark: ReadAloudMark) {
+  return spokenMatch(sources, mark)?.ranges ?? null
+}
+
+function spokenSourceIndex(sources: readonly Element[], mark: ReadAloudMark): number | null {
+  return spokenMatch(sources, mark)?.index ?? null
 }
 
 export function paintReadAloud(
@@ -443,19 +454,22 @@ export function watchReadAloud(
 }
 
 // A click on the book page. 划线笔记 and a selection that locates speech
-// both consume the click. Only a plain click turns the page.
-export type BookClick = 'note' | 'locate' | 'left' | 'right' | 'chrome'
+// both consume the click. A pointer that moved is not a tap. A still tap
+// turns only on the side margin; the page itself opens the tools.
+export type BookClick = 'note' | 'locate' | 'left' | 'right' | 'chrome' | 'stay'
 
 export function bookClickAction(input: {
   noting: boolean
   selected: boolean
   speaking: boolean
-  x: number
+  place: TapPlace
+  moved: boolean
 }): BookClick {
   if (input.noting) return 'note'
   if (input.selected) return input.speaking ? 'locate' : 'note'
-  if (input.x < 0.28) return 'left'
-  if (input.x > 0.72) return 'right'
+  if (input.moved) return 'stay'
+  if (input.place === 'left') return 'left'
+  if (input.place === 'right') return 'right'
   return 'chrome'
 }
 
@@ -465,23 +479,32 @@ export function bookClickAction(input: {
 export function bookClickGate() {
   let selected = false
   let noting = false
+  let x = 0
+  let y = 0
+  let moved = false
   return {
-    down(menuOpen: boolean) {
+    down(menuOpen: boolean, clientX = 0, clientY = 0) {
       selected = false
       noting = menuOpen
+      x = clientX
+      y = clientY
+      moved = false
     },
-    up(selectionText: string) {
+    up(selectionText: string, clientX = 0, clientY = 0) {
       selected = selectionText.length > 0
+      moved = Math.hypot(clientX - x, clientY - y) > TAP_SLOP
     },
-    click(speaking: boolean, selectionText: string, x: number): BookClick {
+    click(speaking: boolean, selectionText: string, place: TapPlace): BookClick {
       const action = bookClickAction({
         noting,
         selected: selected || selectionText.length > 0,
         speaking,
-        x,
+        place,
+        moved,
       })
       selected = false
       noting = false
+      moved = false
       return action
     },
   }
@@ -578,6 +601,8 @@ function selectArticle(article: HTMLElement): void {
 export type ReadAloudBindOptions = {
   offset?: number
   onPast?: () => void
+  /** Other paragraphs recede only while this is true and a sentence is on the page. */
+  focus?: () => boolean
 }
 
 export type ReadAloudStop = (() => void) & { replay: () => void; follow: () => boolean }
@@ -646,6 +671,12 @@ export function bindReadAloud(
     // chapter's sources is that chapter, so the book can turn to it. A sentence
     // that still sits in this chapter is painted here, even when its article
     // block index has drifted past the source list.
+    const focusOn = options?.focus?.() === true
+    if (!focusOn || !local) paintReadFocus(sources, null)
+    else if (painted === true) {
+      const index = spokenSourceIndex(sources, local)
+      if (index != null) paintReadFocus(sources, index)
+    }
     if (!painted) {
       if (mark && mark.blockIndex >= offset + sources.length) return 'past' as const
       return false
@@ -694,6 +725,7 @@ export function bindReadAloud(
     stopWatch()
     doc.removeEventListener('mousedown', hold)
     doc.removeEventListener('mouseup', release)
+    paintReadFocus(sources, null)
   }) as ReadAloudStop
   stop.replay = replay
   stop.follow = followNow

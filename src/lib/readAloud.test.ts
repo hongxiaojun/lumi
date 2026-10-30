@@ -743,6 +743,90 @@ describe('bindReadAloud', () => {
     expect(past).toBe(1)
     stop()
   })
+
+  it('recedes other paragraphs only while the focus switch is on', async () => {
+    const article = document.createElement('article')
+    const spoken = document.createElement('p')
+    spoken.textContent = '当前这一句'
+    article.append(spoken)
+    const body = doc(`
+      <p>前面一段</p>
+      <img alt="">
+      <p>当前这一句<span data-leaf-tr="1">当前译文</span></p>
+      <p data-leaf-tr="1">当前段后的对照</p>
+      <p>后面一段<span class="leaf-tr">后面译文</span></p>
+    `)
+    const sources = [...body.querySelectorAll('p')].filter((el) => !el.hasAttribute('data-leaf-tr'))
+    const added: string[] = []
+    let focus = false
+    const stop = bindReadAloud(article, sources, body.ownerDocument, () => ({
+      add: (key) => added.push(key),
+      remove: () => {},
+      redraw: () => {},
+      scrollTo: () => {},
+    }), { focus: () => focus })
+    spoken.replaceChildren(lineWithWord('当前这一句', '这', 2))
+    await flush()
+    expect(added).toContain('leaf-read-line')
+    expect(added).toContain('leaf-read-word')
+    expect(body.querySelector('.leaf-focus-dim, .leaf-focus-here')).toBeNull()
+    focus = true
+    stop.replay()
+    expect(sources[0].classList.contains('leaf-focus-dim')).toBe(true)
+    expect(sources[1].classList.contains('leaf-focus-here')).toBe(true)
+    expect(sources[1].classList.contains('leaf-focus-dim')).toBe(false)
+    expect(sources[1].querySelector('[data-leaf-tr]')!.closest('.leaf-focus-dim')).toBeNull()
+    expect(body.querySelector('p[data-leaf-tr]')!.classList.contains('leaf-focus-dim')).toBe(false)
+    expect(sources[2].classList.contains('leaf-focus-dim')).toBe(true)
+    expect(body.querySelector('img')!.classList.contains('leaf-focus-dim')).toBe(false)
+    focus = false
+    stop.replay()
+    expect(body.querySelector('.leaf-focus-dim, .leaf-focus-here')).toBeNull()
+    stop()
+  })
+
+  it('focuses the paragraph that contains the sentence when the article index has drifted', async () => {
+    const article = document.createElement('article')
+    const drifted = document.createElement('p')
+    drifted.textContent = '可动手。'
+    article.append(drifted)
+    const body = doc('<p>别的句子</p><p>可动手。</p>')
+    const sources = [...body.querySelectorAll('p')]
+    const stop = bindReadAloud(article, sources, body.ownerDocument, () => ({
+      add: () => {},
+      remove: () => {},
+      redraw: () => {},
+      scrollTo: () => {},
+    }), { focus: () => true })
+    drifted.replaceChildren(lineWithWord('可动手。', '动手', 1))
+    await flush()
+    expect(sources[0].classList.contains('leaf-focus-dim')).toBe(true)
+    expect(sources[1].classList.contains('leaf-focus-here')).toBe(true)
+    stop()
+    expect(body.querySelector('.leaf-focus-dim, .leaf-focus-here')).toBeNull()
+  })
+
+  it('restores the page when reading aloud stops', async () => {
+    const article = document.createElement('article')
+    const spoken = document.createElement('p')
+    spoken.textContent = '当前这一句'
+    article.append(spoken)
+    const body = doc('<p>前面一段</p><p>当前这一句</p>')
+    const sources = [...body.querySelectorAll('p')]
+    const stop = bindReadAloud(article, sources, body.ownerDocument, () => ({
+      add: () => {},
+      remove: () => {},
+      redraw: () => {},
+      scrollTo: () => {},
+    }), { focus: () => true })
+    spoken.replaceChildren(lineWithWord('当前这一句', '这', 2))
+    await flush()
+    expect(sources[0].classList.contains('leaf-focus-dim')).toBe(true)
+    spoken.textContent = '当前这一句'
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(body.querySelector('.leaf-focus-dim, .leaf-focus-here')).toBeNull()
+    stop()
+  })
 })
 
 describe('retargetReadAloud', () => {
@@ -814,48 +898,67 @@ describe('bookClickGate', () => {
     const gate = bookClickGate()
     gate.down(false)
     gate.up('知是他')
-    expect(gate.click(true, '', 0.1)).toBe('locate')
-    expect(gate.click(true, '', 0.9)).toBe('right')
+    expect(gate.click(true, '', 'left')).toBe('locate')
+    expect(gate.click(true, '', 'right')).toBe('right')
   })
 
-  it('keeps a plain click as a page turn while Read Aloud is on', () => {
+  it('opens the tools on the page and turns only at the side', () => {
     const gate = bookClickGate()
     gate.down(false)
     gate.up('')
-    expect(gate.click(true, '', 0.1)).toBe('left')
-    expect(gate.click(true, '', 0.5)).toBe('chrome')
-    expect(gate.click(true, '', 0.72)).toBe('chrome')
-    expect(gate.click(true, '', 0.72 + 0.001)).toBe('right')
+    expect(gate.click(true, '', 'text')).toBe('chrome')
+    expect(gate.click(true, '', 'left')).toBe('left')
+    expect(gate.click(true, '', 'right')).toBe('right')
   })
 
-  it('does not page while the highlight menu is up, then pages on the next click', () => {
+  it('does not page or open tools when the pointer moved', () => {
     const gate = bookClickGate()
-    gate.down(true)
-    gate.up('')
-    expect(gate.click(true, '', 0.05)).toBe('note')
+    gate.down(false, 100, 100)
+    gate.up('', 112, 100)
+    expect(gate.click(true, '', 'right')).toBe('stay')
+    gate.down(false, 0, 0)
+    gate.up('', 8, 8)
+    expect(gate.click(false, '', 'text')).toBe('stay')
+    gate.down(false, 100, 100)
+    gate.up('', 110, 100)
+    expect(gate.click(true, '', 'right')).toBe('right')
+  })
+
+  it('still locates a selection when the pointer moved', () => {
+    const gate = bookClickGate()
+    gate.down(false, 10, 10)
+    gate.up('知是他', 40, 10)
+    expect(gate.click(true, '', 'left')).toBe('locate')
+  })
+
+  it('does not page while the highlight menu is up, then pages on the next side tap', () => {
+    const gate = bookClickGate()
+    gate.down(true, 0, 0)
+    gate.up('', 40, 0)
+    expect(gate.click(true, '', 'right')).toBe('note')
     gate.down(false)
     gate.up('')
-    expect(gate.click(true, '', 0.05)).toBe('left')
+    expect(gate.click(true, '', 'left')).toBe('left')
   })
 
   it('locates when the selection is still on the page at click time', () => {
     const gate = bookClickGate()
     gate.down(false)
     gate.up('')
-    expect(gate.click(true, '知是他', 0.1)).toBe('locate')
+    expect(gate.click(true, '知是他', 'left')).toBe('locate')
   })
 
   it('treats a selection as a highlight when Read Aloud is off', () => {
     const gate = bookClickGate()
     gate.down(false)
     gate.up('黛玉')
-    expect(gate.click(false, '', 0.9)).toBe('note')
+    expect(gate.click(false, '', 'right')).toBe('note')
   })
 
   it('lets an open highlight win over a selection on the same click', () => {
     const gate = bookClickGate()
     gate.down(true)
     gate.up('黛玉')
-    expect(gate.click(true, '黛玉', 0.1)).toBe('note')
+    expect(gate.click(true, '黛玉', 'left')).toBe('note')
   })
 })

@@ -6,6 +6,7 @@ const listen = vi.fn()
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invoke(...args) }))
 vi.mock('@tauri-apps/api/event', () => ({ listen: (...args: unknown[]) => listen(...args) }))
 
+import { BOOK_READ_CHUNK } from './ipcBytes'
 import {
   createOpenBatchHandler,
   formatUnsupportedTip,
@@ -54,8 +55,45 @@ describe('openFiles (M12-2)', () => {
     const { files, errors } = await takeAndLoadOpenedFiles()
     expect(errors).toEqual([])
     expect(files.map((f) => f.name)).toEqual(['a.epub', 'b.pdf'])
+    expect(new Uint8Array(await files[0].arrayBuffer())).toEqual(new Uint8Array([1, 2]))
     expect(invoke.mock.calls.filter((c) => c[0] === 'read_opened_file')).toHaveLength(2)
     expect(invoke).toHaveBeenCalledWith('take_pending_opens')
+  })
+
+  it('assembles a Finder open from 128KB windows', async () => {
+    setTauri(true)
+    const calls: { offset: number; length: number }[] = []
+    invoke.mockImplementation(async (cmd: string, args?: { offset?: number; length?: number }) => {
+      if (cmd !== 'read_opened_file') throw new Error(cmd)
+      calls.push({ offset: args?.offset ?? -1, length: args?.length ?? -1 })
+      if (args?.offset === 0) return new Array(BOOK_READ_CHUNK).fill(7)
+      if (args?.offset === BOOK_READ_CHUNK) return [8, 9]
+      return []
+    })
+    const { files, errors } = await loadOpenedFiles([{ token: 'wide', name: 'wide.epub' }])
+    expect(errors).toEqual([])
+    expect(calls).toEqual([
+      { offset: 0, length: BOOK_READ_CHUNK },
+      { offset: BOOK_READ_CHUNK, length: BOOK_READ_CHUNK },
+    ])
+    const bytes = new Uint8Array(await files[0].arrayBuffer())
+    expect(bytes.length).toBe(BOOK_READ_CHUNK + 2)
+    expect(bytes[0]).toBe(7)
+    expect(bytes[BOOK_READ_CHUNK]).toBe(8)
+    expect(bytes[BOOK_READ_CHUNK + 1]).toBe(9)
+  })
+
+  it('macOS number arrays become file bytes before import', async () => {
+    setTauri(true)
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'take_pending_opens') return [{ token: 't1', name: 'one.epub' }]
+      if (cmd === 'read_opened_file') return [80, 75, 3, 4]
+      throw new Error(`unexpected ${cmd}`)
+    })
+    const { files, errors } = await takeAndLoadOpenedFiles()
+    expect(errors).toEqual([])
+    expect(files[0].size).toBe(4)
+    expect(Array.from(new Uint8Array(await files[0].arrayBuffer()))).toEqual([80, 75, 3, 4])
   })
 
   it('event path: open-files listener loads each token once', async () => {

@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, Runtime};
 
-use crate::open_files::{register_opens_filtered, register_menu_open_selection, OpenFilesState};
+use crate::open_files::{
+    register_menu_open_selection, register_opens_filtered, OpenFilesState, OPEN_BOOK_EXTS,
+};
 
 pub const OPEN_MENU_ID: &str = "file-open";
 
@@ -79,7 +81,7 @@ pub fn on_menu_event(app: &AppHandle, event: MenuEvent) {
 async fn pick_book_files() -> Option<Vec<PathBuf>> {
     rfd::AsyncFileDialog::new()
         .set_title("打开")
-        .add_filter("电子书", &["epub", "pdf"])
+        .add_filter("电子书", OPEN_BOOK_EXTS)
         .pick_files()
         .await
         .map(|files| files.into_iter().map(|f| f.path().to_path_buf()).collect())

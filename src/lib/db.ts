@@ -1,13 +1,19 @@
-import type { LibraryBook, Prefs, TranslatorConfig } from '../types'
+import type { FontId, LibraryBook, Prefs, TranslatorConfig } from '../types'
 import type { Annotation } from './notes'
 import type { Bookmark } from './bookmarks'
 import type { BookLook } from './bookLook'
 import { lookOf } from './bookLook'
+import type { UserFont } from './userFonts'
+import { looksReplacingFont, looksWithFont } from './userFonts'
+import { saveDiskMeta, shouldWriteDiskMeta } from './bookCatalog'
+import { coverToStore } from './coverBlob'
+import { readBookChunks, readBookUrl } from './ipcBytes'
 import { DEFAULT_PREFS } from './styles'
 import { DEFAULT_SECRETS } from './translate/engines'
 
 const DB_NAME = 'leaf-reader'
 const DB_VERSION = 3
+const USER_FONTS_KEY = 'user-fonts'
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -72,20 +78,36 @@ async function getBookRecord(id: string): Promise<LibraryBook | undefined> {
   return reqOf(tx.objectStore('books').get(id)) as Promise<LibraryBook | undefined>
 }
 
+async function readBookBytes(id: string, ext: string): Promise<Uint8Array> {
+  try {
+    const { convertFileSrc } = await import('@tauri-apps/api/core')
+    return await readBookUrl(convertFileSrc(`${id}.${ext}`, 'leafbook'))
+  } catch (error) {
+    console.error('leafbook', error)
+    const invoke = await tauriInvoke()
+    return readBookChunks((offset, length) => invoke('read_book_file', { id, ext, offset, length }))
+  }
+}
+
 export async function getBook(id: string): Promise<LibraryBook | undefined> {
   const record = await getBookRecord(id)
   if (!record?.filePath || !isTauri()) return record
-  const invoke = await tauriInvoke()
-  const data = await invoke<ArrayBuffer>('read_book_file', { id, ext: bookExt(record.fileName) })
-  return { ...record, file: new Blob([data]) }
+  const bytes = await readBookBytes(id, bookExt(record.fileName))
+  const copy = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(copy).set(bytes)
+  // Foliate tells EPUB from CBZ by the file name. A bare Blob has none, and the
+  // zip check then throws before the book is parsed.
+  const name = record.fileName.trim() || `book.${bookExt(record.fileName)}`
+  return { ...record, file: new File([copy], name) }
 }
 
 export async function putBook(book: LibraryBook): Promise<void> {
-  let record: LibraryBook | Omit<LibraryBook, 'file'> = book
   // Legacy = row already in IDB without filePath (still holds Blob). Migrating those is M10-3.
   // If the stored row OR the caller already has filePath, always take the disk path — never rewrite Blob.
-  const existing = isTauri() ? await getBookRecord(book.id) : undefined
-  const legacy = !!existing && !existing.filePath && !book.filePath
+  const existing = await getBookRecord(book.id)
+  const withCover: LibraryBook = { ...book, cover: await coverToStore(book.cover, existing?.cover) }
+  let record: LibraryBook | Omit<LibraryBook, 'file'> = withCover
+  const legacy = isTauri() && !!existing && !existing.filePath && !book.filePath
   if (isTauri() && !legacy) {
     let filePath = book.filePath ?? existing?.filePath
     if (!filePath) {
@@ -95,12 +117,20 @@ export async function putBook(book: LibraryBook): Promise<void> {
         headers: { 'x-book-id': book.id, 'x-book-ext': bookExt(book.fileName) },
       })
     }
-    const { file: _file, ...meta } = book
+    const { file: _file, ...meta } = withCover
     record = { ...meta, filePath }
   }
   const db = await openDb()
   const tx = db.transaction('books', 'readwrite')
   await reqOf(tx.objectStore('books').put(record))
+  const next: LibraryBook = { ...book, ...record, file: book.file }
+  if (shouldWriteDiskMeta(existing, next)) {
+    try {
+      await saveDiskMeta(next)
+    } catch (error) {
+      console.error('book catalog', book.id, error)
+    }
+  }
 }
 
 export async function deleteBook(id: string): Promise<void> {
@@ -154,6 +184,36 @@ export async function saveLocalBookLook(bookId: string, prefs: Prefs): Promise<v
   const db = await openDb()
   const tx = db.transaction('kv', 'readwrite')
   await reqOf(tx.objectStore('kv').put(all, 'book-looks'))
+}
+
+export async function loadUserFonts(): Promise<UserFont[]> {
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readonly')
+  const stored = (await reqOf(tx.objectStore('kv').get(USER_FONTS_KEY))) as UserFont[] | undefined
+  return Array.isArray(stored) ? stored : []
+}
+
+export async function saveUserFonts(fonts: UserFont[]): Promise<void> {
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readwrite')
+  await reqOf(tx.objectStore('kv').put(fonts, USER_FONTS_KEY))
+}
+
+/** Every saved look takes this face. Books with no look stay on the device template. */
+export async function replaceLocalLookFonts(font: FontId): Promise<void> {
+  const next = looksWithFont(await localLooks(), font)
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readwrite')
+  await reqOf(tx.objectStore('kv').put(next, 'book-looks'))
+}
+
+export async function replaceMatchingLocalLookFont(from: FontId, to: FontId): Promise<void> {
+  const current = await localLooks()
+  const next = looksReplacingFont(current, from, to)
+  if (next === current) return
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readwrite')
+  await reqOf(tx.objectStore('kv').put(next, 'book-looks'))
 }
 
 export async function loadTranslator(): Promise<TranslatorConfig> {
@@ -306,7 +366,9 @@ async function migrateLegacyBooksOnce(): Promise<void> {
       const filePath = await invoke<string>('write_book_file', bytes, {
         headers: { 'x-book-id': book.id, 'x-book-ext': ext },
       })
-      const readBack = await invoke<ArrayBuffer>('read_book_file', { id: book.id, ext })
+      const readBack = await readBookChunks((offset, length) =>
+        invoke('read_book_file', { id: book.id, ext, offset, length }),
+      )
       const readLen = readBack.byteLength
       if (readLen !== bytes.length) {
         throw new Error(`size mismatch ${readLen} != ${bytes.length}`)

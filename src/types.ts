@@ -13,18 +13,21 @@ export type ThemeId =
   | 'warmNight'
   | 'ink'
   | 'dusk'
-export type FontId =
+export type BuiltinFontId =
   | 'song'
   | 'kinghwa'
   | 'fang'
   | 'zhuque'
   | 'kai'
+  | 'localkai'
   | 'wenkai'
   | 'hei'
   | 'yuan'
   | 'pingfang'
   | 'palatino'
   | 'newsreader'
+/** `user:` plus the app token for a face stored only on this Mac. */
+export type FontId = BuiltinFontId | `user:${string}`
 export type FlowId = 'paginated' | 'scrolled'
 
 export type Theme = {
@@ -44,6 +47,8 @@ export type Prefs = {
   flow: FlowId
   justify: boolean
   parallel: boolean
+  /** Recede other paragraphs while read-aloud is speaking. Off by default. */
+  focusRead: boolean
 }
 
 export type TranslatorConfig = {

@@ -18,12 +18,14 @@ beforeAll(() => {
 
 describe('extractPdf', () => {
   it('reads text from a tiny PDF', async () => {
-    const out = await extractPdf(helloPdfBytes())
+    const seen: Array<[number, number]> = []
+    const out = await extractPdf(helloPdfBytes(), (done, total) => seen.push([done, total]))
     expect(out.encrypted).toBe(false)
     expect(out.pageCount).toBe(1)
     expect(out.charCount).toBeGreaterThan(4)
     const joined = out.pages.flat().map((r) => r.str).join('')
     expect(joined).toMatch(/Hello/)
+    expect(seen).toEqual([[1, 1]])
     expect(classifyPdf(out)).toBe('text')
     expect(pdfRejectReason(classifyPdf(out))).toBeNull()
   })

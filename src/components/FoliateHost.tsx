@@ -5,8 +5,11 @@ import type { FlowId, Prefs, RelocateDetail, TocItem, TranslatorConfig } from '.
 import type { Annotation, NoteColor } from '../lib/notes'
 import type { ScriptKind } from '../lib/translate/lang'
 import { colorHex, createAnnotation } from '../lib/notes'
+import { bindMarginTap, tapClaims, tapPage, tapPlace } from '../lib/pageTap'
 import { readerCSS } from '../lib/styles'
+import { mountUserFonts } from '../lib/userFonts'
 import { loadFontFaces } from '../lib/fonts'
+import { readingFontFaces, subscribeUserFontFaces } from '../lib/userFonts'
 import { languageFromMeta, prepareSection, shouldTypesetEnglish } from '../lib/typeset'
 import { blocksFromDoc, injectTranslations, listenBookSelection, removeTranslations } from '../lib/readerDom'
 import { rangeMenuPoint, sectionIndexForRange } from '../lib/annotate'
@@ -19,6 +22,9 @@ import { resolveDirection } from '../lib/translate/lang'
 import { translateBlocks, translateTexts } from '../lib/translate/service'
 import { capBlocks, nextLinearIndexes } from '../lib/translate/prefetch'
 import { appendReadAloud, bindReadAloud, blocksForSources, bookClickGate, keepReadAloud, readAloudLang, readAloudSources, retargetReadAloud } from '../lib/readAloud'
+import { rememberChapter } from '../lib/edgeChapter'
+import { SPREAD_PAGE_PX, spreadColumns } from '../lib/spread'
+import { PAGE_MARGIN_PX, layoutFoot, paintPageFeet, type FootLabel } from '../lib/pageFoot'
 
 export type ReaderApi = {
   goLeft: () => void
@@ -34,10 +40,15 @@ type FoliateViewEl = HTMLElement & {
   book: {
     toc?: TocItem[]
     metadata?: { language?: unknown }
-    sections?: Array<{ linear?: string; createDocument?: () => Promise<Document> }>
+    sections?: Array<{ linear?: string; size?: number; createDocument?: () => Promise<Document> }>
   }
   renderer?: {
     setAttribute: (name: string, value: string) => void
+    getAttribute: (name: string) => string | null
+    feet?: HTMLElement[] | null
+    page?: number
+    pages?: number
+    render?: () => void
     setStyles?: (css: string) => void
     getContents?: () => {
       doc: Document
@@ -83,17 +94,47 @@ type Props = {
   onStatus: (msg: string | null) => void
   onOpenFailed: (msg: string) => void
   onUpdateAnnotation: (row: Annotation) => void
+  onPageFoot?: (line: FootLabel | null) => void
 }
 
-function applyLayout(view: FoliateViewEl, flow: FlowId, css: string) {
+function applyLayout(view: FoliateViewEl, flow: FlowId, css: string, width: number, height: number) {
   const r = view.renderer
   if (!r) return
+  const columns = spreadColumns(width, height, flow)
   r.setAttribute('flow', flow)
-  r.setAttribute('max-inline-size', '720px')
-  r.setAttribute('max-column-count', '1')
+  r.setAttribute('max-column-count', String(columns))
+  r.setAttribute('max-inline-size', `${SPREAD_PAGE_PX}px`)
   r.setAttribute('gap', '8%')
-  r.setAttribute('margin', '28px')
+  r.setAttribute('margin', `${PAGE_MARGIN_PX}px`)
   r.setStyles?.(css)
+  r.render?.()
+  const docs = (r.getContents?.() ?? []).map((item) => item.doc)
+  void Promise.all(docs.map((doc) => mountUserFonts(doc))).then((loaded) => {
+    if (loaded.some(Boolean)) r.render?.()
+  })
+}
+
+function showPageFoot(view: FoliateViewEl, flow: FlowId, sectionFraction: number): FootLabel | null {
+  const sizes = (view.book?.sections ?? []).map((section) =>
+    section.linear !== 'no' && (section.size ?? 0) > 0 ? section.size ?? 0 : 0)
+  const labels = layoutFoot({
+    flow,
+    columns: view.renderer?.feet?.length ?? 1,
+    page: view.renderer?.page ?? 0,
+    pages: view.renderer?.pages ?? 0,
+    sectionSizes: sizes,
+    index: view.lastLocation?.section?.current ?? 0,
+    locationCurrent: view.lastLocation?.location?.current ?? 0,
+    locationTotal: view.lastLocation?.location?.total ?? 0,
+    sectionFraction,
+  })
+  if (flow === 'paginated' && view.renderer?.feet?.length) {
+    paintPageFeet(view.renderer.feet, labels)
+    return null
+  }
+  paintPageFeet(view.renderer?.feet, null)
+  const line = labels?.[0]
+  return line?.page ? line : null
 }
 
 function speechMark(
@@ -134,6 +175,7 @@ function readAloudPage(view: FoliateViewEl, doc: Document) {
 export function FoliateHost({
   file, cfi, bookId, language, prefs, translator, annotations,
   onRelocate, onReady, onCreateAnnotation, onRequestNote, onStatus, onOpenFailed, onUpdateAnnotation,
+  onPageFoot,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<FoliateViewEl | null>(null)
@@ -148,11 +190,13 @@ export function FoliateHost({
   const onStatusRef = useRef(onStatus)
   const onOpenFailedRef = useRef(onOpenFailed)
   const onUpdateRef = useRef(onUpdateAnnotation)
+  const onPageFootRef = useRef(onPageFoot)
   const startCfi = useRef(cfi)
   const scriptRef = useRef<ScriptKind>(language ?? 'zh')
   const languageRef = useRef(language)
   const fontFaces = useRef('')
   const docRef = useRef<Document | null>(null)
+  const replaySpeechRef = useRef<(() => void) | null>(null)
   const sectionFrac = useRef(0)
   const pending = useRef<{ range: Range; text: string } | null>(null)
   const lastPen = useRef<NoteColor>('yellow')
@@ -172,6 +216,7 @@ export function FoliateHost({
     onStatusRef.current = onStatus
     onOpenFailedRef.current = onOpenFailed
     onUpdateRef.current = onUpdateAnnotation
+    onPageFootRef.current = onPageFoot
   })
 
   useEffect(() => {
@@ -189,6 +234,18 @@ export function FoliateHost({
     let spokenTicket = 0
     let replaySpeech: (() => void) | null = null
     let followSpeech: (() => boolean) | null = null
+    let pageFrame: Element | null = null
+    sessionDetachers.push(bindMarginTap(view, {
+      frame: () => pageFrame,
+      turn: (side) => {
+        if (pending.current) return
+        void (side === 'left' ? view.goLeft() : view.goRight())
+      },
+      chrome: () => {
+        if (pending.current) return
+        window.dispatchEvent(new Event('leaf:toggle-chrome'))
+      },
+    }))
 
     const paint = () =>
       paintStoredHighlights(view, annotationsRef.current, (row) => colorHex(row.color), (row) => onUpdateRef.current(row))
@@ -313,9 +370,11 @@ export function FoliateHost({
       const doc = (e as CustomEvent).detail?.doc as Document | undefined
       if (!doc) return
       docRef.current = doc
+      const frame = doc.defaultView?.frameElement
+      rememberChapter(doc, frame instanceof HTMLIFrameElement ? frame.src : '')
       scriptRef.current = prepareSection(doc, scriptRef.current)
       const profile = shouldTypesetEnglish(scriptRef.current) ? 'en' : 'zh'
-      applyLayout(view, prefsRef.current.flow, readerCSS(prefsRef.current, profile, fontFaces.current))
+      applyLayout(view, prefsRef.current.flow, readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current)), hostRef.current?.clientWidth ?? 0, hostRef.current?.clientHeight ?? 0)
       pending.current = null
       setMenu(null)
       loadDetachers.splice(0).forEach((fn) => fn())
@@ -333,6 +392,7 @@ export function FoliateHost({
         if (article instanceof HTMLElement) {
           const stop = bindReadAloud(article, sources, doc, () => readAloudPage(view, doc), {
             offset,
+            focus: () => prefsRef.current.focusRead === true,
             onPast: () => {
               wantAhead = true
               const here = view.renderer?.getContents?.()[0]?.index
@@ -340,12 +400,14 @@ export function FoliateHost({
             },
           })
           replaySpeech = stop.replay
+          replaySpeechRef.current = stop.replay
           followSpeech = stop.follow
           if (arriving) landFollow = true
           loadDetachers.push(() => {
             if (replaySpeech === stop.replay) {
               replaySpeech = null
               followSpeech = null
+              replaySpeechRef.current = null
             }
             stop()
           })
@@ -353,18 +415,24 @@ export function FoliateHost({
       }
       const sectionIndex = (e as CustomEvent).detail?.index as number | undefined
       void appendAhead(sectionIndex ?? 0, ticket)
+      pageFrame = doc.defaultView?.frameElement instanceof Element ? doc.defaultView.frameElement : null
       const gate = bookClickGate()
-      const onDown = () => { gate.down(pending.current != null) }
-      const onUp = () => { gate.up(doc.getSelection()?.toString() ?? '') }
+      const onDown = (ev: MouseEvent) => { gate.down(pending.current != null, ev.clientX, ev.clientY) }
+      const onUp = (ev: MouseEvent) => { gate.up(doc.getSelection()?.toString() ?? '', ev.clientX, ev.clientY) }
       const onClick = (ev: MouseEvent) => {
+        if (tapClaims(ev.target) || ev.defaultPrevented) return
         const article = host.querySelector(':scope > article.read-aloud')
         const speaking = article instanceof HTMLElement && article.dataset.leafSpeaking === '1'
+        const frame = doc.defaultView?.frameElement
+        const place = frame instanceof Element
+          ? tapPlace(frame.getBoundingClientRect().left + ev.clientX, frame, tapPage(frame))
+          : 'text'
         const action = gate.click(
           speaking,
           doc.getSelection()?.toString() ?? '',
-          ev.clientX / (doc.documentElement.clientWidth || 1),
+          place,
         )
-        if (action === 'note' || action === 'locate') return
+        if (action === 'note' || action === 'locate' || action === 'stay') return
         if (action === 'left') void view.goLeft()
         else if (action === 'right') void view.goRight()
         else window.dispatchEvent(new Event('leaf:toggle-chrome'))
@@ -482,10 +550,12 @@ export function FoliateHost({
         const fromMeta = languageFromMeta(view.book.metadata?.language)
         scriptRef.current = fromMeta ?? languageRef.current ?? 'zh'
         const profile = shouldTypesetEnglish(scriptRef.current) ? 'en' : 'zh'
-        applyLayout(view, prefsRef.current.flow, readerCSS(prefsRef.current, profile, fontFaces.current))
+        applyLayout(view, prefsRef.current.flow, readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current)), hostRef.current?.clientWidth ?? 0, hostRef.current?.clientHeight ?? 0)
         view.renderer?.addEventListener('relocate', (ev) => {
           const frac = (ev as CustomEvent).detail?.fraction
-          if (typeof frac === 'number' && Number.isFinite(frac)) sectionFrac.current = frac
+          const sectionFraction = typeof frac === 'number' && Number.isFinite(frac) ? frac : sectionFrac.current
+          sectionFrac.current = sectionFraction
+          onPageFootRef.current?.(showPageFoot(view, prefsRef.current.flow, sectionFraction))
         })
         sessionDetachers.push(attachPager([view], {
           getFlow: () => prefsRef.current.flow,
@@ -506,25 +576,64 @@ export function FoliateHost({
           toc: view.book?.toc ?? [],
         })
       } catch (error) {
+        console.error(error)
         if (!gone) onOpenFailedRef.current(explainImportFailure(error))
       }
     })()
 
     return () => {
       gone = true
+      rememberChapter(null)
       loadDetachers.forEach((fn) => fn())
       sessionDetachers.forEach((fn) => fn())
-      view.close()
+      try {
+        view.close()
+      } catch (error) {
+        console.error(error)
+      }
       view.remove()
       viewRef.current = null
     }
   }, [file])
 
   useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const apply = () => {
+      const renderer = viewRef.current?.renderer
+      if (!renderer) return
+      const flow = prefsRef.current.flow
+      const next = String(spreadColumns(host.clientWidth, host.clientHeight, flow))
+      if (renderer.getAttribute('max-column-count') === next) return
+      renderer.setAttribute('max-column-count', next)
+      renderer.render?.()
+    }
+    const observer = new ResizeObserver(apply)
+    observer.observe(host)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    return subscribeUserFontFaces(() => {
+      const view = viewRef.current
+      if (!view?.renderer) return
+      const profile = shouldTypesetEnglish(scriptRef.current) ? 'en' : 'zh'
+      applyLayout(
+        view,
+        prefsRef.current.flow,
+        readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current)),
+        hostRef.current?.clientWidth ?? 0,
+        hostRef.current?.clientHeight ?? 0,
+      )
+    })
+  }, [])
+
+  useEffect(() => {
     const view = viewRef.current
     if (!view?.renderer) return
     const profile = shouldTypesetEnglish(scriptRef.current) ? 'en' : 'zh'
-    applyLayout(view, prefs.flow, readerCSS(prefs, profile, fontFaces.current))
+    applyLayout(view, prefs.flow, readerCSS(prefs, profile, readingFontFaces(fontFaces.current)), hostRef.current?.clientWidth ?? 0, hostRef.current?.clientHeight ?? 0)
+    replaySpeechRef.current?.()
     let cancelled = false
     const timer = window.setTimeout(() => {
       if (cancelled) return

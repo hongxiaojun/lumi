@@ -4,7 +4,7 @@ import { shouldAttemptUnwrap } from './unwrapLines'
 const ZH = new Set(['zh', 'zho', 'chi'])
 const EN = new Set(['en', 'eng'])
 const LAYOUT_PROP =
-  /^(font-family|font-size|line-height|text-indent|text-align|text-justify|letter-spacing|color|background|width|max-width|min-width|margin|padding)(-|$)/i
+  /^(font-family|font-size|font-weight|line-height|text-indent|text-align|text-justify|letter-spacing|color|background|width|max-width|min-width|margin|padding)(-|$)/i
 const SENTENCE_END = /[.!?…]['"’”)\]]*$/u
 const ZH_SENTENCE_END = /[。！？…!?]\s*[」』”’】）)\]]*$/u
 const VERSE_CLASS = /verse|poem|line|stanza|poetry|song/

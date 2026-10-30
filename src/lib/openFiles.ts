@@ -1,3 +1,5 @@
+import { readBookChunks } from './ipcBytes'
+
 export type PendingOpen = {
   token: string
   name: string
@@ -14,7 +16,7 @@ async function tauriInvoke(): Promise<Invoke> {
   return invoke as Invoke
 }
 
-/** Read whitelist tokens into File objects (one-shot read_opened_file each). */
+/** Read whitelist tokens into File objects, one 128KB window at a time. */
 export async function loadOpenedFiles(
   items: PendingOpen[],
   invoke?: Invoke,
@@ -24,8 +26,12 @@ export async function loadOpenedFiles(
   const errors: string[] = []
   for (const item of items) {
     try {
-      const data = await call<ArrayBuffer>('read_opened_file', { token: item.token })
-      files.push(new File([data], item.name))
+      const bytes = await readBookChunks((offset, length) =>
+        call('read_opened_file', { token: item.token, offset, length }),
+      )
+      const copy = new ArrayBuffer(bytes.byteLength)
+      new Uint8Array(copy).set(bytes)
+      files.push(new File([copy], item.name))
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
       // Already consumed / expired token (e.g. remount race): skip quietly.

@@ -1,48 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
-  <style>
-    :root {
-      --logo-ink: #2a241c;
-      --logo-paper: #f4ede0;
-      --logo-gold: #c4a056;
-    }
-  </style>
-  <path d="M112 118h32l10 36-12 46H122l-12-46z" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="2.8" stroke-linejoin="round"/>
-  <path d="M114 128 94 140v26l22-10" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="2.8" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M142 128 162 140v26l-22-10" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="2.8" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M122 142 128 158 134 142" stroke="var(--logo-ink)" stroke-width="2" stroke-linecap="round"/>
-  <path d="M100.7 38.7L97.2 56.8A46 42 0 1 0 158.8 56.8L155.3 38.7L143.7 48.5A46 42 0 0 0 112.3 48.5Z" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="2.8" stroke-linejoin="miter" stroke-miterlimit="2.2"/>
-  <circle cx="108" cy="86" r="18" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="2.4"/>
-  <circle cx="148" cy="86" r="18" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="2.4"/>
-  <circle cx="110" cy="90" r="10" fill="var(--logo-ink)"/>
-  <circle cx="150" cy="90" r="10" fill="var(--logo-ink)"/>
-  <circle cx="106" cy="83" r="3.4" fill="var(--logo-paper)"/>
-  <circle cx="146" cy="83" r="3.4" fill="var(--logo-paper)"/>
-  <path d="M128 100 116 116 128 122 140 116Z" fill="var(--logo-gold)" stroke="var(--logo-ink)" stroke-width="1.8" stroke-linejoin="round"/>
-  <path d="M116 202v10c0 5 3 8 8 8s8-3 8-8v-10" stroke="var(--logo-ink)" stroke-width="2.8" stroke-linecap="round"/>
-  <path d="M132 202v10c0 5 3 8 8 8s8-3 8-8v-10" stroke="var(--logo-ink)" stroke-width="2.8" stroke-linecap="round"/>
-  <g transform="translate(0 4)">
-    <rect x="46" y="204" width="164" height="32" rx="16" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="2.4"/>
-    <g transform="translate(54 220)">
-      <circle r="16" fill="var(--logo-gold)" stroke="var(--logo-ink)" stroke-width="1.8"/>
-      <circle r="14.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="12.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="10.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="8.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="6.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="4.4" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <path d="M0.8,0L0.8,0.1L0.8,0.2L0.8,0.4L0.8,0.5L0.8,0.6L0.7,0.7L0.6,0.9L0.5,1L0.4,1.1L0.3,1.2L0.1,1.2L0,1.3L-0.2,1.3L-0.4,1.4L-0.6,1.3L-0.8,1.3L-1,1.2L-1.2,1.1L-1.4,1L-1.6,0.8L-1.8,0.7L-1.9,0.4L-2,0.2L-2.1,-0.1L-2.2,-0.4L-2.2,-0.7L-2.2,-1L-2.1,-1.3L-2,-1.7L-1.8,-2L-1.6,-2.3L-1.3,-2.6L-1,-2.9L-0.6,-3.1L-0.2,-3.3L0.2,-3.4L0.7,-3.5L1.2,-3.5L1.7,-3.5L2.3,-3.4L2.8,-3.2L3.3,-2.9L3.8,-2.5L4.3,-2.1L4.7,-1.5L5.1,-0.9L5.4,-0.3L5.6,0.5L5.7,1.2L5.7,2.1L5.6,2.9L5.4,3.8L5.1,4.7L4.6,5.5L4,6.3L3.2,7.1L2.4,7.7L1.4,8.3L0.3,8.8L-0.9,9.1L-2.2,9.3L-3.6,9.3L-4.9,9.1L-6.4,8.7L-7.8,8.1L-9.1,7.3L-10.4,6.3L-11.6,5L-12.7,3.6L-13.6,2L-14.3,0.2" stroke="var(--logo-ink)" stroke-width="0.7" fill="none"/>
-      <rect x="-1.3" y="-1.3" width="2.6" height="2.6" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="0.5"/>
-    </g>
-    <g transform="translate(202 220) scale(-1 1)">
-      <circle r="16" fill="var(--logo-gold)" stroke="var(--logo-ink)" stroke-width="1.8"/>
-      <circle r="14.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="12.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="10.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="8.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="6.2" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <circle r="4.4" fill="none" stroke="var(--logo-ink)" stroke-width="0.45" opacity="0.55"/>
-      <path d="M0.8,0L0.8,0.1L0.8,0.2L0.8,0.4L0.8,0.5L0.8,0.6L0.7,0.7L0.6,0.9L0.5,1L0.4,1.1L0.3,1.2L0.1,1.2L0,1.3L-0.2,1.3L-0.4,1.4L-0.6,1.3L-0.8,1.3L-1,1.2L-1.2,1.1L-1.4,1L-1.6,0.8L-1.8,0.7L-1.9,0.4L-2,0.2L-2.1,-0.1L-2.2,-0.4L-2.2,-0.7L-2.2,-1L-2.1,-1.3L-2,-1.7L-1.8,-2L-1.6,-2.3L-1.3,-2.6L-1,-2.9L-0.6,-3.1L-0.2,-3.3L0.2,-3.4L0.7,-3.5L1.2,-3.5L1.7,-3.5L2.3,-3.4L2.8,-3.2L3.3,-2.9L3.8,-2.5L4.3,-2.1L4.7,-1.5L5.1,-0.9L5.4,-0.3L5.6,0.5L5.7,1.2L5.7,2.1L5.6,2.9L5.4,3.8L5.1,4.7L4.6,5.5L4,6.3L3.2,7.1L2.4,7.7L1.4,8.3L0.3,8.8L-0.9,9.1L-2.2,9.3L-3.6,9.3L-4.9,9.1L-6.4,8.7L-7.8,8.1L-9.1,7.3L-10.4,6.3L-11.6,5L-12.7,3.6L-13.6,2L-14.3,0.2" stroke="var(--logo-ink)" stroke-width="0.7" fill="none"/>
-      <rect x="-1.3" y="-1.3" width="2.6" height="2.6" fill="var(--logo-paper)" stroke="var(--logo-ink)" stroke-width="0.5"/>
-    </g>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" rx="228" fill="#1C2C6B"/>
+    <rect x="112" y="88" width="800" height="536" rx="40" fill="#C4372A" stroke="#1C100C" stroke-width="8"/>
+  <rect x="128" y="104" width="768" height="504" rx="37" fill="#E7C79A" stroke="#8A6240" stroke-width="2.4"/>
+  <rect x="144" y="120" width="736" height="472" rx="34" fill="#FBF1E2" stroke="#8A6240" stroke-width="2.4"/>
+  <rect x="160" y="136" width="704" height="440" rx="31" fill="#E2BC8C" stroke="#8A6240" stroke-width="2.4"/>
+  <rect x="176" y="152" width="672" height="408" rx="28" fill="#F6E4C8" stroke="#8A6240" stroke-width="2.4"/>
+  <rect x="192" y="168" width="640" height="376" rx="25" fill="#D9B48A" stroke="#8A6240" stroke-width="2.4"/>
+  <rect x="208" y="184" width="608" height="344" rx="16" fill="#FFFEFB" stroke="#1C100C" stroke-width="7"/>
+  <rect x="507.0" y="190" width="10" height="338" fill="#1C100C"/>
+  <ellipse cx="512" cy="526" rx="54" ry="36" fill="#E23B32" stroke="#1C100C" stroke-width="7"/>
+  <g fill="#F4F0E6" transform="translate(241.00 868) scale(1 -1)">
+    <path d="M115.17 37.32 L112.88 0.00 L5.66 0.00 L5.66 6.40 Q8.53 6.64 12.39 7.18 Q16.24 7.71 17.47 8.20 Q20.43 9.35 21.57 11.40 Q22.72 13.45 22.72 16.65 L22.72 98.77 Q22.72 101.72 21.82 103.65 Q20.92 105.57 17.47 107.13 Q14.93 108.28 11.36 108.98 Q7.79 109.68 5.66 110.00 L5.66 116.40 L69.56 116.40 L69.56 110.00 Q66.94 109.76 63.37 109.31 Q59.80 108.86 57.18 108.04 Q53.98 106.97 52.91 104.71 Q51.84 102.46 51.84 99.59 L51.84 23.05 Q51.84 17.64 52.58 14.52 Q53.32 11.40 55.45 9.93 Q57.59 8.37 61.40 7.92 Q65.21 7.46 71.94 7.46 Q78.50 7.46 84.70 8.24 Q90.89 9.02 93.60 11.65 Q97.78 15.83 102.17 23.42 Q106.56 31.01 109.18 37.32 Z M264.87 110.00 Q262.49 109.76 258.02 108.90 Q253.55 108.04 250.52 105.90 Q247.40 103.85 246.13 98.52 Q244.86 93.19 244.86 82.52 L244.86 39.21 Q244.86 20.10 231.89 8.45 Q218.93 -3.20 197.61 -3.20 Q172.75 -3.20 159.13 8.04 Q145.52 19.28 145.52 39.38 L145.52 98.93 Q145.52 101.80 144.41 103.85 Q143.30 105.90 140.18 107.54 Q138.05 108.61 134.93 109.27 Q131.82 109.92 129.85 110.17 L129.85 116.40 L190.88 116.40 L190.88 110.17 Q188.25 110.00 185.55 109.55 Q182.84 109.10 180.05 108.20 Q176.93 107.21 175.87 104.92 Q174.80 102.62 174.80 99.75 L174.80 41.02 Q174.80 23.71 182.43 15.83 Q190.06 7.96 204.58 7.96 Q218.85 7.96 226.97 16.65 Q235.09 25.35 235.09 42.25 L235.09 81.70 Q235.09 92.20 233.66 97.41 Q232.22 102.62 229.27 104.92 Q227.14 106.72 221.85 108.20 Q216.55 109.68 214.42 110.00 L214.42 116.40 L264.87 116.40 Z M440.82 0.00 L377.74 0.00 L377.74 6.40 Q380.53 6.64 384.59 7.22 Q388.65 7.79 390.12 8.45 Q393.16 9.68 394.47 11.81 Q395.79 13.95 395.79 17.23 L395.79 104.18 L355.75 1.89 L345.42 1.89 Q344.68 4.59 341.77 12.63 Q338.86 20.67 337.05 25.51 L307.60 105.49 L307.60 34.70 Q307.60 24.53 308.96 19.24 Q310.31 13.95 313.34 11.48 Q315.39 9.76 320.69 8.20 Q325.98 6.64 328.11 6.40 L328.11 0.00 L278.07 0.00 L278.07 6.40 Q280.12 6.64 284.76 7.51 Q289.39 8.37 292.34 10.50 Q295.62 12.80 296.77 18.25 Q297.92 23.71 297.92 33.80 L297.92 91.46 Q297.92 96.71 296.61 100.20 Q295.30 103.69 292.67 105.74 Q289.39 108.28 285.95 109.02 Q282.50 109.76 278.97 110.00 L278.97 116.40 L332.54 116.40 L361.25 39.54 L385.45 101.96 Q386.68 105.41 387.83 110.17 Q388.98 114.93 389.06 116.40 L440.66 116.40 L440.66 110.00 Q438.03 109.84 435.16 109.35 Q432.29 108.86 429.66 108.04 Q426.46 106.97 425.44 104.67 Q424.41 102.38 424.41 99.59 L424.41 17.14 Q424.41 14.19 425.44 12.18 Q426.46 10.17 429.66 8.70 Q431.30 7.96 435.04 7.30 Q438.77 6.64 440.82 6.40 Z M526.86 0.00 L462.30 0.00 L462.30 6.40 Q464.52 6.56 468.83 6.89 Q473.13 7.22 474.77 7.88 Q477.81 9.11 478.92 11.12 Q480.02 13.12 480.02 16.24 L480.02 98.77 Q480.02 101.55 478.96 103.69 Q477.89 105.82 474.77 107.13 Q472.80 107.95 468.95 108.81 Q465.09 109.68 462.30 110.00 L462.30 116.40 L526.86 116.40 L526.86 110.00 Q524.40 109.76 520.71 109.31 Q517.02 108.86 514.48 108.04 Q511.28 106.97 510.21 104.71 Q509.14 102.46 509.14 99.59 L509.14 17.14 Q509.14 14.19 510.25 12.10 Q511.36 10.01 514.48 8.70 Q516.20 7.96 520.18 7.26 Q524.16 6.56 526.86 6.40 Z"/>
   </g>
 </svg>

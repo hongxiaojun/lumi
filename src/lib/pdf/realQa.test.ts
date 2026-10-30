@@ -32,6 +32,7 @@ describe.skipIf(!files.length)('real PDF pipeline', () => {
             extracted.title || 'PDF',
             extracted.chapterStarts,
             extracted.outline,
+            extracted.images,
           )
       const sample = chapters[0]?.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240) ?? ''
       const radicals = /[\u2E80-\u2EF3\u2F00-\u2FD5]/.test(chapters.map((c) => c.html).join(''))

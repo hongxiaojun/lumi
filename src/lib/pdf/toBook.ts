@@ -1,8 +1,9 @@
 import { detectScript } from '../translate/lang'
 import { restyleDocument } from '../typeset'
-import { clusterLines, linesToHtml, type PdfRun } from './cluster'
+import { clusterLines, linesToHtml, type PdfLine, type PdfRun } from './cluster'
 import { stripRepeatedMargins } from './headers'
 import { makeEpubBlob } from './epubZip'
+import type { PdfFigure } from './figures'
 import type { PdfOutlineItem } from './outline'
 
 const PAGES_PER_CHAPTER = 8
@@ -13,6 +14,7 @@ export function pagesToChapters(
   bookTitle: string,
   chapterStarts?: number[],
   outline?: PdfOutlineItem[],
+  figures?: PdfFigure[][],
 ): Array<{ title: string; html: string }> {
   const linePages = pages.map((runs) => clusterLines(runs))
   const cleaned = stripRepeatedMargins(linePages, heights)
@@ -23,8 +25,11 @@ export function pagesToChapters(
   const titled = new Map((outline ?? []).map((item) => [item.pageIndex, item.title]))
   const chapters: Array<{ title: string; html: string }> = []
   ranges.forEach(([from, to]) => {
-    const html = restyleHtml(cleaned.slice(from, to).map(linesToHtml).join(''), lang)
-    if (!html.replace(/<[^>]+>/g, '').trim()) return
+    const html = restyleHtml(
+      cleaned.slice(from, to).map((lines, index) => pageBody(lines, figures?.[from + index] ?? [])).join(''),
+      lang,
+    )
+    if (!html.replace(/<[^>]+>/g, '').trim() && !html.includes('<img ')) return
     const label = titled.get(from)?.trim() || `${bookTitle} ${chapters.length + 1}`
     chapters.push({ title: label, html })
   })
@@ -52,6 +57,7 @@ export function pdfToEpubFile(input: {
   heights: number[]
   chapterStarts?: number[]
   outline?: PdfOutlineItem[]
+  figures?: PdfFigure[][]
 }): File {
   const chapters = pagesToChapters(
     input.pages,
@@ -59,12 +65,14 @@ export function pdfToEpubFile(input: {
     input.title,
     input.chapterStarts,
     input.outline,
+    input.figures,
   )
   const blob = makeEpubBlob({
     title: input.title,
     author: input.author,
     language: input.language,
     chapters,
+    images: usedFigures(chapters, input.figures ?? []),
   })
   return new File([blob], `${input.title}.epub`, { type: 'application/epub+zip' })
 }
@@ -86,6 +94,27 @@ function pageRanges(pageCount: number, starts?: number[]): Array<[number, number
     if (to > from) ranges.push([from, to])
   }
   return ranges
+}
+
+function pageBody(lines: PdfLine[], figures: PdfFigure[]): string {
+  const parts = [
+    ...lines.map((line) => ({ y: line.y, html: linesToHtml([line]), image: false })),
+    ...figures.map((figure) => ({ y: figure.top, html: `<img src="${figure.name}" alt=""/>`, image: true })),
+  ]
+  parts.sort((a, b) => b.y - a.y || Number(b.image) - Number(a.image))
+  return parts.map((part) => part.html).join('')
+}
+
+function usedFigures(
+  chapters: Array<{ html: string }>,
+  pages: PdfFigure[][],
+): Array<{ name: string; bytes: Uint8Array }> {
+  const html = chapters.map((chapter) => chapter.html).join('')
+  const used: Array<{ name: string; bytes: Uint8Array }> = []
+  for (const figure of pages.flat()) {
+    if (html.includes(`src="${figure.name}"`)) used.push({ name: figure.name, bytes: figure.bytes })
+  }
+  return used
 }
 
 function restyleHtml(html: string, lang: 'en' | 'zh'): string {

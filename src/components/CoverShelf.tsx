@@ -1,12 +1,14 @@
 import type { LibraryBook } from '../types'
 import { shelfMarks } from '../lib/format'
+import { parseCaption, parseFractionOf } from '../lib/parseGate'
+import { ParseBar } from './ParseBar'
 import '../cover.css'
 
 const blobCovers = new WeakMap<Blob, string>()
 
 function coverSrc(book: LibraryBook): string | null {
   if (book.coverUrl) return book.coverUrl
-  if (!book.cover) return null
+  if (!book.cover || book.cover.size === 0) return null
   const known = blobCovers.get(book.cover)
   if (known) return known
   const url = URL.createObjectURL(book.cover)
@@ -16,6 +18,9 @@ function coverSrc(book: LibraryBook): string | null {
 
 type Props = {
   books: LibraryBook[]
+  parseGates?: Record<string, number>
+  continueKicker?: string
+  removeLabel?: string
   onOpen: (id: string) => void
   onRemove: (id: string) => void
 }
@@ -39,7 +44,7 @@ function BookNotes({ book }: { book: LibraryBook }) {
   )
 }
 
-function Cover({ book, compact }: { book: LibraryBook; compact?: boolean }) {
+function Cover({ book, compact, parsing }: { book: LibraryBook; compact?: boolean; parsing: number | null }) {
   const badge = shelfMarks(book).badge
   const src = coverSrc(book)
   return (
@@ -47,7 +52,12 @@ function Cover({ book, compact }: { book: LibraryBook; compact?: boolean }) {
       {src ? <img src={src} alt="" /> : <div className="cover-fallback">{book.title}</div>}
       {book.aiBuiltAt ? <span className="ai-badge">AI</span> : null}
       {badge ? <span className={`cover-flag${badge === '已读完' ? ' done' : ''}`}>{badge}</span> : null}
-      {book.fraction > 0 ? (
+      {parsing !== null ? (
+        <div className="parse-cover">
+          <span>{parseCaption(parsing)}</span>
+          <ParseBar fraction={parsing} />
+        </div>
+      ) : book.fraction > 0 ? (
         <div className="progress-bar">
           <i style={{ width: `${Math.round(book.fraction * 100)}%` }} />
         </div>
@@ -56,17 +66,32 @@ function Cover({ book, compact }: { book: LibraryBook; compact?: boolean }) {
   )
 }
 
-export function CoverShelf({ books, onOpen, onRemove }: Props) {
+export function CoverShelf({
+  books,
+  parseGates,
+  continueKicker = '继续阅读',
+  removeLabel = '从书架移除',
+  onOpen,
+  onRemove,
+}: Props) {
   const recent = latestOpened(books)
   const recentMarks = recent ? shelfMarks(recent) : null
+  const recentParsing = recent ? parseFractionOf(parseGates, recent.id) : null
 
   return (
     <div className="cover-shelf">
       {recent ? (
-        <button className="continue" type="button" onClick={() => onOpen(recent.id)}>
-          <Cover book={recent} compact />
+        <button
+          className="continue"
+          type="button"
+          disabled={recentParsing !== null}
+          onClick={() => {
+            if (recentParsing === null) onOpen(recent.id)
+          }}
+        >
+          <Cover book={recent} compact parsing={recentParsing} />
           <div>
-            <div className="kicker">继续阅读</div>
+            <div className="kicker">{recentParsing !== null ? parseCaption(recentParsing) : continueKicker}</div>
             <h2>{recent.title}</h2>
             {recent.author ? <p>{recent.author}</p> : null}
             {recentMarks ? (
@@ -79,12 +104,21 @@ export function CoverShelf({ books, onOpen, onRemove }: Props) {
           </div>
         </button>
       ) : null}
-      <p className="shelf-label">全部书籍</p>
       <div className="grid">
-        {books.map((book) => (
+        {books.map((book) => {
+          const parsing = parseFractionOf(parseGates, book.id)
+          return (
           <article className="book" key={book.id}>
-            <button className="book-open" type="button" onClick={() => onOpen(book.id)}>
-              <Cover book={book} />
+            <button
+              className="book-open"
+              type="button"
+              disabled={parsing !== null}
+              aria-label={parsing !== null ? `${book.title}，${parseCaption(parsing)}，完成后才能打开` : undefined}
+              onClick={() => {
+                if (parsing === null) onOpen(book.id)
+              }}
+            >
+              <Cover book={book} parsing={parsing} />
               <h3 className="book-title">{book.title}</h3>
               {book.author ? <p className="book-author">{book.author}</p> : null}
               <BookNotes book={book} />
@@ -92,14 +126,18 @@ export function CoverShelf({ books, onOpen, onRemove }: Props) {
             <button
               className="book-remove"
               type="button"
-              title="从书架移除"
-              aria-label={`从书架移除 ${book.title}`}
-              onClick={() => onRemove(book.id)}
+              title={removeLabel}
+              aria-label={`${removeLabel} ${book.title}`}
+              disabled={parsing !== null}
+              onClick={() => {
+                if (parsing === null) onRemove(book.id)
+              }}
             >
               ×
             </button>
           </article>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

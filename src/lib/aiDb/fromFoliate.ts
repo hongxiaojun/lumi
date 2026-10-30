@@ -12,23 +12,31 @@ type FoliateLike = {
   }>
 }
 
-export async function extractFromFoliate(foliate: FoliateLike, book: LibraryBook): Promise<AiBook> {
+export async function extractFromFoliate(
+  foliate: FoliateLike,
+  book: LibraryBook,
+  onStep?: (done: number, total: number) => void,
+): Promise<AiBook> {
   const labels = tocLabels(foliate.toc ?? [])
   const sections: AiSection[] = []
-  const spine = foliate.sections ?? []
+  const usable = (foliate.sections ?? []).filter((section) => section.linear !== 'no' && section.createDocument)
   let linear = 0
-  for (const section of spine) {
-    if (section.linear === 'no' || !section.createDocument) continue
+  onStep?.(0, usable.length)
+  for (let i = 0; i < usable.length; i += 1) {
+    const section = usable[i]
     let html = ''
     try {
-      const doc = await section.createDocument()
+      const doc = await section.createDocument!()
       html = doc.body?.innerHTML ?? doc.documentElement?.innerHTML ?? ''
     } catch {
-      continue
+      html = ''
     }
-    const title = labels[section.id ?? ''] ?? labels[String(linear)]
-    sections.push({ title, href: section.id, html })
-    linear += 1
+    if (html) {
+      const title = labels[section.id ?? ''] ?? labels[String(linear)]
+      sections.push({ title, href: section.id, html })
+      linear += 1
+    }
+    onStep?.(i + 1, usable.length)
   }
   return extractAiBook(
     {

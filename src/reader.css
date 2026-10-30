@@ -6,6 +6,60 @@
   right: 0;
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
 }
+.reader.split-left,
+.reader.split-right {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+.reader.split-left { grid-template-columns: var(--sidebar) minmax(0, 1fr); }
+.reader.split-right { grid-template-columns: minmax(0, 1fr) var(--sidebar); }
+.reader.split-left > .drawer,
+.reader.split-right > .drawer {
+  position: relative;
+  inset: auto;
+  width: auto;
+  height: auto;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  z-index: 1;
+}
+.reader-main {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: page;
+}
+.reader-main .chrome.top,
+.reader-main .chrome-row { flex-wrap: wrap; }
+.split-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 12px;
+  touch-action: none;
+  cursor: col-resize;
+}
+.reader.split-left .split-handle { left: var(--sidebar); margin-left: -6px; }
+.reader.split-right .split-handle { right: var(--sidebar); margin-right: -6px; }
+.split-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  width: 2px;
+  background: transparent;
+}
+.split-handle:hover::before,
+.split-handle:focus-visible::before {
+  background: var(--accent);
+}
+.split-handle:focus-visible { outline: none; }
 .sheet-wide { width: min(640px, 100%); max-height: 80%; overflow: auto; }
 .field-hint {
   margin: 8px 0 0;
@@ -136,20 +190,49 @@
 .chrome-spacer { flex: 1; }
 .reader-stage {
   top: env(safe-area-inset-top);
-  bottom: calc(40px + env(safe-area-inset-bottom));
+  bottom: env(safe-area-inset-bottom);
+}
+.reader-foot-zone {
+  position: absolute;
+  z-index: 4;
+  left: 56px;
+  right: 56px;
+  bottom: 0;
+  height: 14px;
+}
+.reader-main.foot .reader-foot-zone {
+  left: 0;
+  right: 0;
+  height: 40px;
 }
 @media (hover: none) {
-  .reader-stage { bottom: env(safe-area-inset-bottom); }
-  .reader.tools .reader-stage { bottom: calc(40px + env(safe-area-inset-bottom)); }
-  .reader:not(.tools) .reader-progress {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(110%);
-  }
-  .reader-progress {
-    bottom: env(safe-area-inset-bottom);
-    transition: opacity 180ms ease, transform 180ms ease;
-  }
+  .reader-foot-zone { pointer-events: none; }
+  .reader-main.foot .reader-foot-zone { pointer-events: auto; }
+}
+.page-foot {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-family: var(--ui);
+  font-size: 13px;
+  color: var(--reader-fg);
+  opacity: 0.72;
+}
+.page-foot-rest {
+  position: absolute;
+  right: 18px;
+}
+.reader-main.foot .page-foot { opacity: 0; }
+foliate-view::part(foot) {
+  font-family: var(--ui);
+  color: var(--reader-fg);
 }
 .reader-progress {
   position: absolute;
@@ -165,6 +248,15 @@
   /* The spoken chapter sits under the page and spills into this strip. Keep it covered. */
   background: var(--reader-bg);
   color: var(--reader-fg);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(110%);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.reader-main.foot .reader-progress {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
 }
 .reader-progress-chapter {
   flex: 0 1 28%;
@@ -247,6 +339,157 @@
 }
 .chrome.bottom {
   bottom: 40px;
+}
+/* Column margin is 28px, shorter than the menu, so the first line sits under it. */
+.reader-main.tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "tools-top"
+    "tools-stage"
+    "tools-bottom"
+    "tools-progress";
+}
+.reader-main.tools > * { min-width: 0; max-width: 100%; }
+.reader-main.tools .chrome.top {
+  grid-area: tools-top;
+  position: relative;
+  top: auto;
+}
+.reader-main.tools .chrome.bottom {
+  grid-area: tools-bottom;
+  position: relative;
+  bottom: auto;
+}
+.reader-main.tools .reader-stage {
+  grid-area: tools-stage;
+  position: relative;
+  inset: unset;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.reader-main.tools .reader-progress {
+  grid-area: tools-progress;
+  position: relative;
+  bottom: auto;
+  height: auto;
+  min-height: 40px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@container page (max-width: 719px) {
+  .chrome.top {
+    flex-wrap: wrap;
+    gap: 4px 6px;
+  }
+  .chrome.top .chrome-title {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .chrome.top .icon-btn,
+  .chrome-row .icon-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .chrome-row { flex-wrap: wrap; }
+}
+/* Same paper as the page. The strip is only a hit target until the pointer arrives. */
+.book-menu-zone {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+}
+.reader.split-left .book-menu-zone { left: var(--sidebar); }
+.reader.split-right .book-menu-zone { right: var(--sidebar); }
+.book-menu-zone.shown,
+.book-menu-zone:focus-within { height: auto; }
+.book-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px;
+  background: var(--reader-bg);
+  color: var(--reader-fg);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.book-menu,
+.book-menu * { pointer-events: none; }
+.book-menu-zone.shown .book-menu,
+.book-menu-zone.shown .book-menu *,
+.book-menu-zone:focus-within .book-menu,
+.book-menu-zone:focus-within .book-menu * { pointer-events: auto; }
+.book-menu-zone.shown .book-menu,
+.book-menu-zone:focus-within .book-menu { opacity: 1; }
+@media (hover: none) {
+  .book-menu-zone:not(.shown):not(:focus-within) { pointer-events: none; }
+}
+.book-menu-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-family: var(--ui);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.book-menu-left,
+.book-menu-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.book-menu-pill {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--reader-fg) 5%, var(--reader-bg));
+}
+.book-menu-pill button,
+.book-menu-mark,
+.book-menu-back {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--reader-fg);
+}
+.book-menu-size {
+  width: auto;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.book-menu-back {
+  width: 26px;
+  opacity: 0.5;
+}
+.book-menu-mark {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--reader-fg) 5%, var(--reader-bg));
+}
+.book-menu-back:hover { opacity: 1; }
+.book-menu-back:hover,
+.book-menu-pill button:hover,
+.book-menu-mark:hover {
+  background: color-mix(in srgb, var(--reader-fg) 8%, transparent);
+}
+.book-menu-pill button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--reader-fg) 12%, transparent);
 }
 .status-toast {
   position: absolute;

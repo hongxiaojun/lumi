@@ -10,6 +10,12 @@ import { classifyPdf, pdfRejectReason } from './pdf/classify'
 import { pdfDisplayAuthor, pdfDisplayTitle, pdfToEpubFile } from './pdf/toBook'
 import { explainImportFailure, guardEpub } from './importError'
 import { randomId } from './id'
+import { sectionFraction } from './parseGate'
+
+export type ImportHooks = {
+  onFile?: (name: string, fraction: number) => void
+  onBook?: (book: LibraryBook, fraction: number) => void
+}
 
 type FoliateBook = {
   metadata?: {
@@ -32,13 +38,21 @@ export async function importPrepared(
   file: File,
   persist: (book: LibraryBook, foliate: FoliateBook) => Promise<LibraryBook>,
   id?: string,
+  hooks?: ImportHooks,
 ): Promise<LibraryBook> {
   let foliate: FoliateBook | undefined
+  const sourceName = file.name
   try {
     if (!file.size) throw new Error('这个文件是空的')
+    hooks?.onFile?.(sourceName, 0.05)
     await guardEpub(file)
     const kind = sniffFormat(new Uint8Array(await file.slice(0, 8).arrayBuffer()))
-    if (kind === 'pdf') file = await convertPdf(file)
+    if (kind === 'pdf') {
+      file = await convertPdf(file, (done, total) => {
+        const ratio = total > 0 ? Math.min(1, done / total) : 0
+        hooks?.onFile?.(sourceName, 0.05 + 0.3 * ratio)
+      })
+    }
     foliate = (await makeBook(file)) as FoliateBook
     const title = formatLangMap(foliate.metadata?.title) || file.name.replace(/\.[^.]+$/, '')
     const author =
@@ -68,25 +82,35 @@ export async function importPrepared(
   }
 }
 
-export async function importFile(file: File): Promise<LibraryBook> {
-  return importPrepared(file, async (book, foliate) => {
-    await putBook(book)
-    try {
-      const rows = await listBooks()
-      const next = await buildAndPersist(foliate, book, rows)
-      await putBook(next)
-      return next
-    } catch {
-      return book
-    }
-  })
+export async function importFile(file: File, hooks?: ImportHooks): Promise<LibraryBook> {
+  return importPrepared(
+    file,
+    async (book, foliate) => {
+      await putBook(book)
+      hooks?.onBook?.(book, 0.4)
+      try {
+        const rows = await listBooks()
+        const next = await buildAndPersist(foliate, book, rows, (done, total) => {
+          hooks?.onBook?.(book, sectionFraction(done, total))
+        })
+        await putBook(next)
+        hooks?.onBook?.(next, 1)
+        return next
+      } catch {
+        hooks?.onBook?.(book, 1)
+        return book
+      }
+    },
+    undefined,
+    hooks,
+  )
 }
 
-export async function importMany(files: Iterable<File>): Promise<string[]> {
+export async function importMany(files: Iterable<File>, hooks?: ImportHooks): Promise<string[]> {
   const errors: string[] = []
   for (const file of files) {
     try {
-      await importFile(file)
+      await importFile(file, hooks)
     } catch (error) {
       errors.push(`${file.name}：${explainImportFailure(error)}`)
     }
@@ -94,8 +118,11 @@ export async function importMany(files: Iterable<File>): Promise<string[]> {
   return errors
 }
 
-export async function convertPdf(file: File): Promise<File> {
-  const extracted = await extractPdf(await file.arrayBuffer())
+export async function convertPdf(
+  file: File,
+  onPage?: (done: number, total: number) => void,
+): Promise<File> {
+  const extracted = await extractPdf(await file.arrayBuffer(), onPage)
   const reason = pdfRejectReason(classifyPdf(extracted))
   if (reason) throw new Error(reason)
   const sample = extracted.pages.flat().map((run) => run.str).join('').slice(0, 2000)
@@ -109,6 +136,7 @@ export async function convertPdf(file: File): Promise<File> {
     heights: extracted.heights,
     chapterStarts: extracted.chapterStarts,
     outline: extracted.outline,
+    figures: extracted.images,
   })
 }
 

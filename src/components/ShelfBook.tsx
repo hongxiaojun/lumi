@@ -1,14 +1,18 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import type { LibraryBook } from '../types'
 import { shelfMarks } from '../lib/format'
+import { parseCaption, parsePercent } from '../lib/parseGate'
 import { clothFor, spineLabel } from '../lib/shelfMotion'
+import { ParseBar } from './ParseBar'
 
 type Props = {
   book: LibraryBook
   open: boolean
+  parsing?: number | null
   onTurn: (id: string) => void
   onOpen: (id: string) => void
   onRemove: (id: string) => void
+  removeLabel?: string
 }
 
 function LeafMark() {
@@ -20,13 +24,13 @@ function LeafMark() {
   )
 }
 
-export function ShelfBook({ book, open, onTurn, onOpen, onRemove }: Props) {
+export function ShelfBook({ book, open, parsing = null, onTurn, onOpen, onRemove, removeLabel = '从书架移除' }: Props) {
   const cloth = clothFor(book.id)
   const marks = shelfMarks(book)
   const label = spineLabel(book.title)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (book.coverUrl || !book.cover) return
+    if (book.coverUrl || !book.cover || book.cover.size === 0) return
     const url = URL.createObjectURL(book.cover)
     setObjectUrl(url)
     return () => {
@@ -36,8 +40,8 @@ export function ShelfBook({ book, open, onTurn, onOpen, onRemove }: Props) {
   }, [book.cover, book.coverUrl])
   const src = book.coverUrl || objectUrl
 
-  const progress = marks.progress === '已经读完' ? '已经阅读' : `阅读进度 ${marks.progress}`
-  const action = open ? '再按一次打开' : '按一下转出封面'
+  const progress = parsing !== null ? parseCaption(parsing) : marks.progress === '已经读完' ? '已经阅读' : `阅读进度 ${marks.progress}`
+  const action = parsing !== null ? '完成后才能打开' : open ? '再按一次打开' : '按一下转出封面'
 
   return (
     <div
@@ -50,7 +54,12 @@ export function ShelfBook({ book, open, onTurn, onOpen, onRemove }: Props) {
         className="tome-hit"
         aria-expanded={open}
         aria-label={`${book.title}，${book.author || '未知作者'}，${progress}，${action}`}
-        onClick={() => (open ? onOpen(book.id) : onTurn(book.id))}
+        disabled={parsing !== null}
+        onClick={() => {
+          if (parsing !== null) return
+          if (open) onOpen(book.id)
+          else onTurn(book.id)
+        }}
       >
         <span className="scene">
           <span className="tome">
@@ -60,7 +69,12 @@ export function ShelfBook({ book, open, onTurn, onOpen, onRemove }: Props) {
               {marks.badge ? (
                 <span className={`cover-flag${marks.badge === '已读完' ? ' done' : ''}`}>{marks.badge}</span>
               ) : null}
-              {book.fraction > 0 ? (
+              {parsing !== null ? (
+                <span className="parse-cover">
+                  <span>{parseCaption(parsing)}</span>
+                  <ParseBar fraction={parsing} />
+                </span>
+              ) : book.fraction > 0 ? (
                 <span className="progress-bar">
                   <i style={{ width: `${Math.round(book.fraction * 100)}%` }} />
                 </span>
@@ -70,7 +84,11 @@ export function ShelfBook({ book, open, onTurn, onOpen, onRemove }: Props) {
             <span className="face spine">
               <b>{label}</b>
               <LeafMark />
-              {book.fraction > 0 ? (
+              {parsing !== null ? (
+                <span className="spine-progress">
+                  <i style={{ width: `${parsePercent(parsing)}%` }} />
+                </span>
+              ) : book.fraction > 0 ? (
                 <span className="spine-progress">
                   <i style={{ width: `${Math.round(book.fraction * 100)}%` }} />
                 </span>
@@ -84,9 +102,12 @@ export function ShelfBook({ book, open, onTurn, onOpen, onRemove }: Props) {
       <button
         type="button"
         className="book-remove"
-        title="从书架移除"
-        aria-label={`从书架移除 ${book.title}`}
-        onClick={() => onRemove(book.id)}
+        title={removeLabel}
+        aria-label={`${removeLabel} ${book.title}`}
+        disabled={parsing !== null}
+        onClick={() => {
+          if (parsing === null) onRemove(book.id)
+        }}
       >
         ×
       </button>

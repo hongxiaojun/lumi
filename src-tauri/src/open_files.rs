@@ -1,6 +1,7 @@
 //! M12-2: OS "Open With" / double-click → whitelist tokens → frontend importMany.
 use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -11,6 +12,10 @@ use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const MAX_OPEN_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Formats the shelf can already import, minus `.txt` (the kernel rejects plain text).
+/// Finder, drag-drop, and File → Open share this list.
+pub const OPEN_BOOK_EXTS: &[&str] = &["epub", "pdf", "mobi", "azw3", "fb2"];
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -68,17 +73,17 @@ fn book_ext(path: &Path) -> Option<String> {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
-        .filter(|e| e == "epub" || e == "pdf")
+        .filter(|e| OPEN_BOOK_EXTS.iter().any(|ok| ok == e))
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FilterOpenResult {
     pub accepted: Vec<PathBuf>,
-    /// Display names of paths that were not `.epub`/`.pdf` (for user-facing tips).
+    /// Display names of paths outside [`OPEN_BOOK_EXTS`] (for user-facing tips).
     pub rejected: Vec<String>,
 }
 
-/// Keep `.epub` / `.pdf` only (case-insensitive). Skip `-psn_*` silently.
+/// Keep [`OPEN_BOOK_EXTS`] only (case-insensitive). Skip `-psn_*` silently.
 /// Other paths contribute their file name to `rejected`. Dedupe accepted (order kept).
 pub fn filter_open_paths<I, P>(args: I) -> FilterOpenResult
 where
@@ -217,34 +222,86 @@ pub fn take_pending_opens(state: State<'_, OpenFilesState>) -> Result<Vec<Pendin
     Ok(delivery.take())
 }
 
-#[tauri::command]
-pub fn read_opened_file(state: State<'_, OpenFilesState>, token: String) -> Result<Response, String> {
+fn forget_token(state: &OpenFilesState, token: &str) {
+    if let Ok(mut map) = state.whitelist.lock() {
+        map.remove(token);
+    }
+}
+
+/// One window of an admitted file. macOS evaluates each IPC reply as one script,
+/// so a whole book cannot come back in a single call. The token stays until a
+/// short window (including an empty one past the end) so the next window can
+/// still find the path. A hard error forgets the token so the same file can be opened again.
+pub(crate) fn read_opened_range(
+    state: &OpenFilesState,
+    token: &str,
+    offset: u64,
+    length: u64,
+) -> Result<Vec<u8>, String> {
+    if length == 0 || length > crate::book_files::BOOK_READ_CHUNK {
+        return Err("bad read length".into());
+    }
     let path = {
-        let mut map = state
+        let map = state
             .whitelist
             .lock()
             .map_err(|_| "open-files lock poisoned".to_string())?;
-        map.remove(&token)
+        map.get(token)
+            .cloned()
             .ok_or_else(|| "unknown open token".to_string())?
     };
-    let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    let fail = |message: String| -> Result<Vec<u8>, String> {
+        forget_token(state, token);
+        Err(message)
+    };
+    let meta = match fs::symlink_metadata(&path) {
+        Ok(meta) => meta,
+        Err(error) => return fail(error.to_string()),
+    };
     if meta.file_type().is_symlink() {
-        return Err("symlink rejected".into());
+        return fail("symlink rejected".into());
     }
     if !meta.is_file() {
-        return Err("not a regular file".into());
+        return fail("not a regular file".into());
     }
     if book_ext(&path).is_none() {
-        return Err("unsupported extension".into());
+        return fail("unsupported extension".into());
     }
     let len = meta.len();
     if len > MAX_OPEN_BYTES {
-        return Err(format!(
+        return fail(format!(
             "file too large: {len} bytes (max {MAX_OPEN_BYTES} = 512MB)"
         ));
     }
-    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
-    Ok(Response::new(bytes))
+    let mut file = match File::open(&path) {
+        Ok(file) => file,
+        Err(error) => return fail(error.to_string()),
+    };
+    if let Err(error) = file.seek(SeekFrom::Start(offset)) {
+        return fail(error.to_string());
+    }
+    let mut buf = vec![0u8; length as usize];
+    let n = match crate::book_protocol::fill_read(&mut file, &mut buf) {
+        Ok(n) => n,
+        Err(error) => return fail(error.to_string()),
+    };
+    buf.truncate(n);
+    if (n as u64) < length {
+        forget_token(state, token);
+    }
+    Ok(buf)
+}
+
+#[tauri::command]
+pub fn read_opened_file(
+    state: State<'_, OpenFilesState>,
+    token: String,
+    offset: u64,
+    length: u64,
+) -> Result<Response, String> {
+    Ok(Response::new(read_opened_range(
+        &state, &token, offset, length,
+    )?))
 }
 
 #[cfg(test)]
@@ -253,7 +310,10 @@ mod tests {
     use std::io::Write;
 
     fn item(t: &str) -> PendingOpen {
-        PendingOpen { token: t.into(), name: format!("{t}.epub") }
+        PendingOpen {
+            token: t.into(),
+            name: format!("{t}.epub"),
+        }
     }
 
     #[test]
@@ -295,20 +355,61 @@ mod tests {
             PathBuf::from("/tmp/A.EPUB"),
             PathBuf::from("/tmp/b.Pdf"),
             PathBuf::from("/tmp/c.mobi"),
+            PathBuf::from("/tmp/余华.AZW3"),
+            PathBuf::from("/tmp/story.FB2"),
+            PathBuf::from("/tmp/old.azw"),
+            PathBuf::from("/tmp/packed.fb2.zip"),
         ];
         let got = filter_open_paths(args);
         assert_eq!(
             got.accepted,
-            vec![PathBuf::from("/tmp/A.EPUB"), PathBuf::from("/tmp/b.Pdf")]
+            vec![
+                PathBuf::from("/tmp/A.EPUB"),
+                PathBuf::from("/tmp/b.Pdf"),
+                PathBuf::from("/tmp/c.mobi"),
+                PathBuf::from("/tmp/余华.AZW3"),
+                PathBuf::from("/tmp/story.FB2"),
+            ]
         );
         assert_eq!(
             got.rejected,
             vec![
                 "leaf-reader".to_string(),
                 "notes.txt".to_string(),
-                "c.mobi".to_string(),
+                "old.azw".to_string(),
+                "packed.fb2.zip".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn admit_kernel_formats_and_reject_txt_and_azw() {
+        let state = OpenFilesState::default();
+        let dir = tempfile::tempdir().unwrap();
+        let mut accepted = Vec::new();
+        for name in ["one.mobi", "two.azw3", "three.fb2"] {
+            let path = dir.path().join(name);
+            fs::write(&path, b"book").unwrap();
+            accepted.push(path);
+        }
+        let got = admit_batch(&state, accepted);
+        assert_eq!(got.len(), 3);
+        assert_eq!(
+            got.iter()
+                .map(|item| item.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["one.mobi", "two.azw3", "three.fb2"]
+        );
+        let txt = dir.path().join("plain.txt");
+        let azw = dir.path().join("kindle.azw");
+        fs::write(&txt, b"t").unwrap();
+        fs::write(&azw, b"a").unwrap();
+        assert!(admit_path(&state, &txt)
+            .unwrap_err()
+            .contains("unsupported"));
+        assert!(admit_path(&state, &azw)
+            .unwrap_err()
+            .contains("unsupported"));
     }
 
     #[test]
@@ -320,7 +421,10 @@ mod tests {
             PathBuf::from("/Books/readme"),
         ]);
         assert_eq!(got.accepted, vec![PathBuf::from("/Books/Good.epub")]);
-        assert_eq!(got.rejected, vec!["photo.png".to_string(), "readme".to_string()]);
+        assert_eq!(
+            got.rejected,
+            vec!["photo.png".to_string(), "readme".to_string()]
+        );
     }
 
     #[test]
@@ -411,6 +515,65 @@ mod tests {
     }
 
     #[test]
+    fn opened_file_walks_in_windows_then_forgets_the_token() {
+        let state = OpenFilesState::default();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("wide.epub");
+        let bytes: Vec<u8> = (0..300_000).map(|i| (i % 251) as u8).collect();
+        fs::write(&file, &bytes).unwrap();
+        let pending = admit_path(&state, &file).unwrap().unwrap();
+        let chunk = crate::book_files::BOOK_READ_CHUNK;
+        let a = read_opened_range(&state, &pending.token, 0, chunk).unwrap();
+        assert_eq!(a.len(), chunk as usize);
+        assert_eq!(a[0], bytes[0]);
+        assert_eq!(state.whitelist.lock().unwrap().len(), 1);
+        let b = read_opened_range(&state, &pending.token, chunk, chunk).unwrap();
+        assert_eq!(b.len(), chunk as usize);
+        assert_eq!(b[0], bytes[chunk as usize]);
+        let tail = read_opened_range(&state, &pending.token, chunk * 2, chunk).unwrap();
+        assert_eq!(tail.len(), bytes.len() - (chunk as usize) * 2);
+        assert_eq!(tail[0], bytes[(chunk as usize) * 2]);
+        assert!(state.whitelist.lock().unwrap().is_empty());
+        assert!(read_opened_range(&state, &pending.token, 0, chunk)
+            .unwrap_err()
+            .contains("unknown open token"));
+    }
+
+    #[test]
+    fn opened_file_exact_window_needs_an_empty_read_to_forget_the_token() {
+        let state = OpenFilesState::default();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("exact.epub");
+        let chunk = crate::book_files::BOOK_READ_CHUNK as usize;
+        fs::write(&file, vec![4u8; chunk]).unwrap();
+        let pending = admit_path(&state, &file).unwrap().unwrap();
+        let full = read_opened_range(&state, &pending.token, 0, chunk as u64).unwrap();
+        assert_eq!(full.len(), chunk);
+        assert_eq!(state.whitelist.lock().unwrap().len(), 1);
+        let end = read_opened_range(&state, &pending.token, chunk as u64, chunk as u64).unwrap();
+        assert!(end.is_empty());
+        assert!(state.whitelist.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn opened_file_rejects_a_window_past_128kb() {
+        let state = OpenFilesState::default();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("one.epub");
+        fs::write(&file, b"EPUB").unwrap();
+        let pending = admit_path(&state, &file).unwrap().unwrap();
+        let err = read_opened_range(
+            &state,
+            &pending.token,
+            0,
+            crate::book_files::BOOK_READ_CHUNK + 1,
+        )
+        .unwrap_err();
+        assert!(err.contains("bad read length"), "{err}");
+        assert_eq!(state.whitelist.lock().unwrap().len(), 1);
+    }
+
+    #[test]
     fn token_is_one_shot_unknown_errors() {
         let state = OpenFilesState::default();
         let dir = tempfile::tempdir().unwrap();
@@ -436,11 +599,15 @@ mod tests {
         let txt = dir.path().join("x.txt");
         fs::write(&txt, b"nope").unwrap();
         // filter drops it; admit also rejects if forced
-        assert!(admit_path(&state, &txt).unwrap_err().contains("unsupported"));
+        assert!(admit_path(&state, &txt)
+            .unwrap_err()
+            .contains("unsupported"));
 
         let sub = dir.path().join("folder");
         fs::create_dir(&sub).unwrap();
-        assert!(admit_path(&state, &sub).unwrap_err().contains("not a regular file"));
+        assert!(admit_path(&state, &sub)
+            .unwrap_err()
+            .contains("not a regular file"));
 
         let target = dir.path().join("real.epub");
         fs::write(&target, b"ok").unwrap();
@@ -473,26 +640,6 @@ mod tests {
     }
 
     fn read_opened_file_for_test(state: &OpenFilesState, token: String) -> Result<Vec<u8>, String> {
-        let path = {
-            let mut map = state.whitelist.lock().unwrap();
-            map.remove(&token).ok_or_else(|| "unknown open token".to_string())?
-        };
-        let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
-        if meta.file_type().is_symlink() {
-            return Err("symlink rejected".into());
-        }
-        if !meta.is_file() {
-            return Err("not a regular file".into());
-        }
-        if book_ext(&path).is_none() {
-            return Err("unsupported extension".into());
-        }
-        let len = meta.len();
-        if len > MAX_OPEN_BYTES {
-            return Err(format!(
-                "file too large: {len} bytes (max {MAX_OPEN_BYTES} = 512MB)"
-            ));
-        }
-        fs::read(&path).map_err(|e| e.to_string())
+        read_opened_range(state, &token, 0, crate::book_files::BOOK_READ_CHUNK)
     }
 }

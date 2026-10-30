@@ -2,10 +2,25 @@ import { useEffect, useRef, useState } from 'react'
 import type { LibraryBook } from '../types'
 import { shelfMarks } from '../lib/format'
 import { featuredBookId, plankRows, plankSize } from '../lib/shelfMotion'
+import { parseCaption, parseFractionOf } from '../lib/parseGate'
+import {
+  SHELF_INDEX,
+  booksInSection,
+  emptyIndexCopy,
+  shelfMark,
+  shelfMarkPhrase,
+  readShelfSection,
+  sectionCounts,
+  writeShelfSection,
+  type ShelfSection,
+} from '../lib/shelfIndex'
 import { browserShelfStorage, readShelfView, writeShelfView, type ShelfView } from '../lib/shelfView'
 import { CoverShelf } from './CoverShelf'
+import { ShelfIndex } from './ShelfIndex'
 import { LeafLogo } from './LeafLogo'
+import { ParseBar } from './ParseBar'
 import { ShelfBook } from './ShelfBook'
+import { UserFontsPanel, type UserFontChoice } from './UserFontsPanel'
 import '../shelf.css'
 
 type Props = {
@@ -13,27 +28,66 @@ type Props = {
   account?: string | null
   loading?: boolean
   notice?: string | null
+  parsePending?: { name: string; fraction: number } | null
+  parseGates?: Record<string, number>
   onDismissNotice?: () => void
   onOpen: (id: string) => void
   onImport: (files: FileList | File[]) => void
   onRemove: (id: string) => void
+  onDrop: (id: string) => void
+  userFonts: UserFontChoice[]
+  activeFont: string
+  fontNotice: string | null
+  onAddFonts: (files: File[]) => void
+  onApplyFont: (id: string) => void
+  onRemoveFont: (id: string) => void
 }
 
-export function Library({ books, account, loading, notice, onDismissNotice, onOpen, onImport, onRemove }: Props) {
+export function Library({
+  books,
+  account,
+  loading,
+  notice,
+  parsePending,
+  parseGates,
+  onDismissNotice,
+  onOpen,
+  onImport,
+  onRemove,
+  onDrop,
+  userFonts,
+  activeFont,
+  fontNotice,
+  onAddFonts,
+  onApplyFont,
+  onRemoveFont,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const shelfRef = useRef<HTMLDivElement>(null)
   const [chosen, setChosen] = useState<string | null>(null)
   const [rowSize, setRowSize] = useState(10)
   const [entered, setEntered] = useState(false)
   const [view, setView] = useState<ShelfView>(() => readShelfView(browserShelfStorage()))
-  const shelfEmpty = books.length === 0
+  const [section, setSection] = useState<ShelfSection>(() => readShelfSection(browserShelfStorage()))
+  const [fontsOpen, setFontsOpen] = useState(false)
+  const shownBooks = booksInSection(books, section)
+  const counts = sectionCounts(books)
+  const sectionLabel = SHELF_INDEX.find((item) => item.id === section)?.label ?? '我的藏书'
+  const continueKicker = section === 'finished' ? '已读完' : '继续阅读'
+  const markPhrase = shelfMarkPhrase(section)
+  function markBook(id: string) {
+    if (shelfMark(section) === 'delete') onRemove(id)
+    else onDrop(id)
+  }
+  const shelfEmpty = shownBooks.length === 0
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const shown = reduceMotion || entered
-  const featured = featuredBookId(books, chosen)
-  const featuredBook = books.find((book) => book.id === featured) ?? null
-  const opened = books.filter((book) => book.lastOpenedAt)
+  const featured = featuredBookId(shownBooks, chosen)
+  const featuredBook = shownBooks.find((book) => book.id === featured) ?? null
+  const opened = shownBooks.filter((book) => book.lastOpenedAt)
   const recentId = opened.length > 0 ? featuredBookId(opened, null) : null
   const marks = featuredBook ? shelfMarks(featuredBook) : null
+  const featuredParsing = featuredBook ? parseFractionOf(parseGates, featuredBook.id) : null
   const turned = shown ? featured : null
 
   useEffect(() => {
@@ -74,6 +128,12 @@ export function Library({ books, account, loading, notice, onDismissNotice, onOp
     writeShelfView(browserShelfStorage(), next)
   }
 
+  function pick(next: ShelfSection) {
+    setSection(next)
+    setChosen(null)
+    writeShelfSection(browserShelfStorage(), next)
+  }
+
   return (
     <div
       className="library"
@@ -83,6 +143,8 @@ export function Library({ books, account, loading, notice, onDismissNotice, onOp
         takeFiles(event.dataTransfer.files)
       }}
     >
+      <ShelfIndex section={section} counts={counts} onPick={pick} />
+      <div className="library-main">
       <header className="library-head">
         <div className="brand">
           <LeafLogo className="brand-logo" />
@@ -101,6 +163,9 @@ export function Library({ books, account, loading, notice, onDismissNotice, onOp
               动态
             </button>
           </div>
+          <button className="btn" type="button" disabled={loading} onClick={() => setFontsOpen(true)}>
+            我的字体
+          </button>
           <button className="btn primary" type="button" onClick={() => inputRef.current?.click()}>
             导入书籍
           </button>
@@ -117,6 +182,28 @@ export function Library({ books, account, loading, notice, onDismissNotice, onOp
           }}
         />
       </header>
+      {fontsOpen ? (
+        <UserFontsPanel
+          fonts={userFonts}
+          activeFont={activeFont}
+          notice={fontNotice}
+          onAdd={onAddFonts}
+          onApply={onApplyFont}
+          onRemove={onRemoveFont}
+          onClose={() => setFontsOpen(false)}
+        />
+      ) : null}
+
+      {parsePending ? (
+        <div className="parse-banner" role="status">
+          <p>
+            正在解析《{parsePending.name}》
+            {' · '}
+            {parseCaption(parsePending.fraction)}
+          </p>
+          <ParseBar fraction={parsePending.fraction} />
+        </div>
+      ) : null}
 
       {notice && (
         <div className="import-notice" role="alert">
@@ -127,10 +214,25 @@ export function Library({ books, account, loading, notice, onDismissNotice, onOp
         </div>
       )}
 
+      <h1 className="shelf-title">{sectionLabel}</h1>
+
       {view === 'stand' && featuredBook && marks ? (
-        <button className="shelf-caption" type="button" onClick={() => onOpen(featuredBook.id)}>
+        <button
+          className="shelf-caption"
+          type="button"
+          disabled={featuredParsing !== null}
+          onClick={() => {
+            if (featuredParsing === null) onOpen(featuredBook.id)
+          }}
+        >
           <div className="kicker">
-            {featuredBook.id === recentId ? '继续阅读' : chosen === featuredBook.id ? '选中的书' : '书架'}
+            {featuredParsing !== null
+              ? parseCaption(featuredParsing)
+              : featuredBook.id === recentId
+                ? continueKicker
+                : chosen === featuredBook.id
+                  ? '选中的书'
+                  : '书架'}
           </div>
           <h2>{featuredBook.title}</h2>
           {featuredBook.author ? <p>{featuredBook.author}</p> : null}
@@ -151,12 +253,23 @@ export function Library({ books, account, loading, notice, onDismissNotice, onOp
               : '把 EPUB 或 PDF 拖进来，或点右上角导入。试读本会在首次打开时自动放入。'}
           </p>
         </div>
+      ) : shownBooks.length === 0 ? (
+        <div className="empty">
+          <h2>{emptyIndexCopy(section)}</h2>
+        </div>
       ) : (
         view === 'cover' ? (
-          <CoverShelf books={books} onOpen={onOpen} onRemove={onRemove} />
+          <CoverShelf
+            books={shownBooks}
+            parseGates={parseGates}
+            continueKicker={continueKicker}
+            removeLabel={markPhrase}
+            onOpen={onOpen}
+            onRemove={markBook}
+          />
         ) : (
           <div className="shelves" ref={shelfRef}>
-            {plankRows(books, rowSize).map((row) => (
+            {plankRows(shownBooks, rowSize).map((row) => (
               <div className="plank" key={row[0].id}>
                 <div className="plank-row">
                   {row.map((book) => (
@@ -164,9 +277,11 @@ export function Library({ books, account, loading, notice, onDismissNotice, onOp
                       key={book.id}
                       book={book}
                       open={turned === book.id}
+                      parsing={parseFractionOf(parseGates, book.id)}
                       onTurn={setChosen}
                       onOpen={onOpen}
-                      onRemove={onRemove}
+                      onRemove={markBook}
+                      removeLabel={markPhrase}
                     />
                   ))}
                 </div>
@@ -175,6 +290,7 @@ export function Library({ books, account, loading, notice, onDismissNotice, onOp
           </div>
         )
       )}
+      </div>
     </div>
   )
 }

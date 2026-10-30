@@ -2,11 +2,12 @@ import type { LibraryBook, Prefs, TranslatorConfig } from '../../types'
 import type { Annotation } from '../notes'
 import type { Bookmark } from '../bookmarks'
 import { listBooks } from '../db'
-import { importPrepared } from '../importBook'
+import { importPrepared, type ImportHooks } from '../importBook'
 import { buildAndPersist } from '../aiDb/build'
 import type { BookLook } from '../bookLook'
 import { lookOf } from '../bookLook'
 import { randomId } from '../id'
+import { sectionFraction } from '../parseGate'
 import { readDevice, writeDevice, type DeviceAccount } from './device'
 import type { HubShelfBook } from './types'
 
@@ -140,21 +141,36 @@ export async function saveSharedMeta(userId: string, book: LibraryBook): Promise
   })
 }
 
-export async function importToHub(userId: string, files: File[], id?: string): Promise<string[]> {
+export async function importToHub(
+  userId: string,
+  files: File[],
+  id?: string,
+  hooks?: ImportHooks,
+): Promise<string[]> {
   const errors: string[] = []
   for (const file of files) {
     try {
-      await importPrepared(file, async (book, foliate) => {
-        await upload(userId, book)
-        try {
-          const rows = await listShelf(userId)
-          const next = await buildAndPersist(foliate, book, rows)
-          await saveSharedMeta(userId, next)
-          return next
-        } catch {
-          return book
-        }
-      }, id)
+      await importPrepared(
+        file,
+        async (book, foliate) => {
+          await upload(userId, book)
+          hooks?.onBook?.(book, 0.4)
+          try {
+            const rows = await listShelf(userId)
+            const next = await buildAndPersist(foliate, book, rows, (done, total) => {
+              hooks?.onBook?.(book, sectionFraction(done, total))
+            })
+            await saveSharedMeta(userId, next)
+            hooks?.onBook?.(next, 1)
+            return next
+          } catch {
+            hooks?.onBook?.(book, 1)
+            return book
+          }
+        },
+        id,
+        hooks,
+      )
     } catch (error) {
       const reason = error instanceof Error ? error.message : '这本书没有写入服务器'
       errors.push(`${file.name}：${reason}`)
