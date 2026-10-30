@@ -185,6 +185,21 @@
 }
 .tome-slot.open .tome-shadow { width: 86%; }
 
+.shelf-waiting {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.shelf-caption + .book-join {
+  margin: -8px 0 18px;
+  font-size: 13px;
+  color: var(--accent);
+}
+.shelf-caption + .book-join:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
 .tome-slot .book-remove {
   position: absolute;
   top: -22px;

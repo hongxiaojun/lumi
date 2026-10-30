@@ -43,10 +43,11 @@ describe('shelfSectionOf', () => {
     expect(shelfSectionOf(' library')).toBe('library')
   })
 
-  it('accepts only the three shelf sections', () => {
+  it('accepts the shelf sections and the audiobook column', () => {
     expect(shelfSectionOf('library')).toBe('library')
     expect(shelfSectionOf('reading')).toBe('reading')
     expect(shelfSectionOf('finished')).toBe('finished')
+    expect(shelfSectionOf('audiobook')).toBe('audiobook')
   })
 })
 
@@ -104,21 +105,36 @@ describe('booksInSection', () => {
 
 describe('sectionCounts', () => {
   it('counts each book once', () => {
-    expect(sectionCounts(shelf)).toEqual({ library: 6, reading: 2, finished: 2 })
-    expect(sectionCounts([])).toEqual({ library: 0, reading: 0, finished: 0 })
+    expect(sectionCounts(shelf)).toEqual({ library: 6, reading: 2, finished: 2, audiobook: 0 })
+    expect(sectionCounts([])).toEqual({ library: 0, reading: 0, finished: 0, audiobook: 0 })
+    expect(sectionCounts(shelf, ['done', 'gone', 'done'])).toEqual({
+      library: 6,
+      reading: 2,
+      finished: 2,
+      audiobook: 1,
+    })
   })
 })
 
 describe('shelf index copy', () => {
-  it('names the three sections in shelf order', () => {
-    expect(SHELF_INDEX.map((item) => item.label)).toEqual(['我的藏书', '正在读', '已读完'])
-    expect(SHELF_INDEX.map((item) => item.id)).toEqual(['library', 'reading', 'finished'])
+  it('names the sections in shelf order, with audiobooks after finished books', () => {
+    expect(SHELF_INDEX.map((item) => item.label)).toEqual(['我的藏书', '正在读', '已读完', '有声书'])
+    expect(SHELF_INDEX.map((item) => item.id)).toEqual(['library', 'reading', 'finished', 'audiobook'])
   })
 
   it('explains an empty reading or finished section and stays quiet for the whole shelf', () => {
     expect(emptyIndexCopy('reading')).toBe('还没有正在读的书')
     expect(emptyIndexCopy('finished')).toBe('还没有读完的书')
     expect(emptyIndexCopy('library')).toBeNull()
+    expect(emptyIndexCopy('audiobook')).toBe('还没有加入有声书的书')
+  })
+
+  it('shows an audiobook only after its id is added, and a finished book stays out until then', () => {
+    expect(booksInSection(shelf, 'audiobook').map((book) => book.id)).toEqual([])
+    expect(booksInSection(shelf, 'audiobook', ['full', 'missing', 'mid']).map((book) => book.id)).toEqual([
+      'full',
+      'mid',
+    ])
   })
 })
 
@@ -133,6 +149,11 @@ describe('shelf mark', () => {
     expect(shelfMark('finished')).toBe('drop')
     expect(shelfMarkPhrase('reading')).toBe('移出正在读')
     expect(shelfMarkPhrase('finished')).toBe('移出已读完')
+  })
+
+  it('leaves the audiobook column without deleting the book or clearing its place', () => {
+    expect(shelfMark('audiobook')).toBe('leave')
+    expect(shelfMarkPhrase('audiobook')).toBe('移出有声书')
   })
 
   it('keeps the book on the whole shelf and clears the place that put it on a filtered shelf', () => {
@@ -166,7 +187,9 @@ describe('shelf section storage', () => {
     expect(readShelfSection(store)).toBe('reading')
     writeShelfSection(store, 'finished')
     expect(readShelfSection(store)).toBe('finished')
-    expect(store.getItem(SHELF_SECTION_KEY)).toBe('finished')
+    writeShelfSection(store, 'audiobook')
+    expect(readShelfSection(store)).toBe('audiobook')
+    expect(store.getItem(SHELF_SECTION_KEY)).toBe('audiobook')
   })
 
   it('returns to the whole shelf when the stored value is not a section', () => {

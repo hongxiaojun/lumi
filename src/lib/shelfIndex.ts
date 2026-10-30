@@ -1,16 +1,19 @@
+import { audiobookBooks } from './audiobookShelf'
 import { readingPlace } from './format'
 
 export const SHELF_SECTION_KEY = 'leaf:shelf-section'
 
-export type ShelfSection = 'library' | 'reading' | 'finished'
+export type ShelfSection = 'library' | 'reading' | 'finished' | 'audiobook'
 
 export const SHELF_INDEX: { id: ShelfSection; label: string }[] = [
   { id: 'library', label: '我的藏书' },
   { id: 'reading', label: '正在读' },
   { id: 'finished', label: '已读完' },
+  { id: 'audiobook', label: '有声书' },
 ]
 
 type ShelfBook = {
+  id?: string
   fraction: number | null | undefined
   lastOpenedAt?: number | null
 }
@@ -21,7 +24,7 @@ type ShelfStore = {
 }
 
 export function shelfSectionOf(value: string | null | undefined): ShelfSection {
-  if (value === 'library' || value === 'reading' || value === 'finished') return value
+  if (value === 'library' || value === 'reading' || value === 'finished' || value === 'audiobook') return value
   return 'library'
 }
 
@@ -30,8 +33,13 @@ function openedAt(at: number | null | undefined): number {
 }
 
 /** The whole shelf stays in shelf order. Reading and finished lists follow the last open. */
-export function booksInSection<T extends ShelfBook>(books: readonly T[], section: ShelfSection): T[] {
+export function booksInSection<T extends ShelfBook>(
+  books: readonly T[],
+  section: ShelfSection,
+  audiobookIds?: readonly string[],
+): T[] {
   if (section === 'library') return books.slice()
+  if (section === 'audiobook') return audiobookBooks(books, audiobookIds ?? [])
   const place = section === 'finished' ? 'finished' : 'reading'
   return books
     .filter((book) => readingPlace(book.fraction) === place)
@@ -39,26 +47,40 @@ export function booksInSection<T extends ShelfBook>(books: readonly T[], section
     .sort((a, b) => openedAt(b.lastOpenedAt) - openedAt(a.lastOpenedAt))
 }
 
-export function sectionCounts(books: readonly ShelfBook[]): Record<ShelfSection, number> {
-  const counts = { library: books.length, reading: 0, finished: 0 }
+export function sectionCounts(
+  books: readonly ShelfBook[],
+  audiobookIds: readonly string[] = [],
+): Record<ShelfSection, number> {
+  const counts = { library: books.length, reading: 0, finished: 0, audiobook: 0 }
+  const present = new Set<string>()
   for (const book of books) {
     const place = readingPlace(book.fraction)
     if (place === 'reading') counts.reading += 1
     else if (place === 'finished') counts.finished += 1
+    if (book.id) present.add(book.id)
+  }
+  const seen = new Set<string>()
+  for (const id of audiobookIds) {
+    if (seen.has(id) || !present.has(id)) continue
+    seen.add(id)
+    counts.audiobook += 1
   }
   return counts
 }
 
-export type ShelfMark = 'delete' | 'drop'
+export type ShelfMark = 'delete' | 'drop' | 'leave'
 
-/** The whole library deletes the file. The other two shelves only clear the reading place. */
+/** The whole library deletes the file. Reading and finished clear the place. Audiobook only leaves the column. */
 export function shelfMark(section: ShelfSection): ShelfMark {
-  return section === 'library' ? 'delete' : 'drop'
+  if (section === 'library') return 'delete'
+  if (section === 'audiobook') return 'leave'
+  return 'drop'
 }
 
 export function shelfMarkPhrase(section: ShelfSection): string {
   if (section === 'reading') return '移出正在读'
   if (section === 'finished') return '移出已读完'
+  if (section === 'audiobook') return '移出有声书'
   return '删除书籍'
 }
 
@@ -75,6 +97,7 @@ export function droppedRecord<T extends PlacedBook>(book: T): T {
 export function emptyIndexCopy(section: ShelfSection): string | null {
   if (section === 'reading') return '还没有正在读的书'
   if (section === 'finished') return '还没有读完的书'
+  if (section === 'audiobook') return '还没有加入有声书的书'
   return null
 }
 

@@ -106,6 +106,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.cover-shelf .book-join {
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+.cover-shelf .book-join:disabled {
+  color: var(--muted);
+  cursor: default;
+}
 .cover-shelf .book-remove {
   position: absolute;
   top: 6px;
