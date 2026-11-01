@@ -6,6 +6,8 @@ import { detectBookLanguage } from './typeset'
 import { buildAndPersist } from './aiDb/build'
 import { sniffFormat } from './pdf/sniff'
 import { extractPdf } from './pdf/extract'
+import { garbledRatio } from './pdf/garbled'
+import { ocrPdfPage, ocrSupported } from './pdf/ocr'
 import { classifyPdf, pdfRejectReason } from './pdf/classify'
 import { pdfDisplayAuthor, pdfDisplayTitle, pdfToEpubFile } from './pdf/toBook'
 import { explainImportFailure, guardEpub } from './importError'
@@ -122,10 +124,12 @@ export async function convertPdf(
   file: File,
   onPage?: (done: number, total: number) => void,
 ): Promise<File> {
-  const extracted = await extractPdf(await file.arrayBuffer(), onPage)
-  const reason = pdfRejectReason(classifyPdf(extracted))
+  // Pages with a missing or garbled text layer go through Vision OCR on this Mac.
+  const ocrPage = ocrSupported() ? ocrPdfPage : undefined
+  const extracted = await extractPdf(await file.arrayBuffer(), { onPage, ocrPage })
+  const sample = extracted.pages.flat().map((run) => run.str).join('').slice(0, 4000)
+  const reason = pdfRejectReason(classifyPdf({ ...extracted, garbledRatio: garbledRatio(sample) }))
   if (reason) throw new Error(reason)
-  const sample = extracted.pages.flat().map((run) => run.str).join('').slice(0, 2000)
   const language = detectBookLanguage(undefined, sample) === 'en' ? 'en' : 'zh'
   const title = pdfDisplayTitle(extracted.title, file.name)
   return pdfToEpubFile({

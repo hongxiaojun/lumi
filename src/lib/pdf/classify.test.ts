@@ -21,6 +21,16 @@ describe('classifyPdf', () => {
       'scanned',
     )
   })
+
+  it('flags a garbled text layer even when there is plenty of text', () => {
+    expect(
+      classifyPdf({ encrypted: false, charCount: 90000, pageCount: 100, garbledRatio: 0.37 }),
+    ).toBe('garbled')
+    expect(
+      classifyPdf({ encrypted: false, charCount: 90000, pageCount: 100, garbledRatio: 0.003 }),
+    ).toBe('text')
+    expect(classifyPdf({ encrypted: false, charCount: 90000, pageCount: 100 })).toBe('text')
+  })
 })
 
 describe('pdfRejectReason', () => {
@@ -28,5 +38,10 @@ describe('pdfRejectReason', () => {
     expect(pdfRejectReason('encrypted')).toMatch(/密码/)
     expect(pdfRejectReason('scanned')).toMatch(/扫描/)
     expect(pdfRejectReason('text')).toBeNull()
+  })
+
+  it('explains a broken text layer with the OCR hint', () => {
+    expect(pdfRejectReason('garbled')).toMatch(/乱码/)
+    expect(pdfRejectReason('garbled')).toMatch(/Lumi 桌面版/)
   })
 })

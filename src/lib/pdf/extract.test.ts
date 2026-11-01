@@ -1,10 +1,11 @@
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { classifyPdf, pdfRejectReason } from './classify'
-import { extractPdf, setPdfAssetUrls, setPdfWorkerSrc } from './extract'
+import { extractPdf, pageNeedsOcr, setPdfAssetUrls, setPdfWorkerSrc } from './extract'
 import { blankPdfBytes, encryptedPdfBytes, helloPdfBytes } from './helloPdf'
+import type { PdfRun } from './cluster'
 
 beforeAll(() => {
   const req = createRequire(import.meta.url)
@@ -43,6 +44,51 @@ describe('extractPdf', () => {
     expect(out.encrypted).toBe(true)
     expect(classifyPdf(out)).toBe('encrypted')
     expect(pdfRejectReason(classifyPdf(out))).toMatch(/密码/)
+  })
+
+  it('OCRs pages with no text layer and keeps the recognized runs', async () => {
+    const ocrRuns: PdfRun[] = [
+      { str: '扫描出来的一行正文文字', x: 72, y: 700, w: 300, h: 16 },
+      { str: '第二行也有足够多的字', x: 72, y: 660, w: 120, h: 16 },
+    ]
+    const ocrPage = vi.fn(async () => ocrRuns)
+    const out = await extractPdf(blankPdfBytes(), { ocrPage })
+    expect(ocrPage).toHaveBeenCalledTimes(1)
+    expect(ocrPage.mock.calls[0][1]).toBe(0)
+    expect(out.charCount).toBeGreaterThan(12)
+    const joined = out.pages.flat().map((r) => r.str).join('')
+    expect(joined).toMatch(/扫描出来/)
+    expect(classifyPdf(out)).toBe('text')
+    expect(pdfRejectReason(classifyPdf(out))).toBeNull()
+  })
+
+  it('keeps the text layer when OCR fails, even on a sparse page', async () => {
+    const ocrPage = vi.fn(async () => null)
+    const out = await extractPdf(helloPdfBytes(), { ocrPage })
+    expect(ocrPage).toHaveBeenCalledTimes(1)
+    expect(out.charCount).toBeGreaterThan(4)
+    const joined = out.pages.flat().map((r) => r.str).join('')
+    expect(joined).toMatch(/Hello/)
+  })
+})
+
+describe('pageNeedsOcr', () => {
+  it('flags a page with no usable text', () => {
+    expect(pageNeedsOcr([])).toBe(true)
+    expect(pageNeedsOcr([{ str: '目录', x: 0, y: 0, w: 10, h: 10 }])).toBe(true)
+  })
+
+  it('flags a page whose text is the known garbled mapping', () => {
+    const garbled = '餓⟣綘鳓\uf63b桬䚃日խFEJUPST!IVBORJVLFYVF\x0fDPN㼭ꥬ㹔ⰻ\ue67b鵯⚡㼭ꥬ㹔⠔鄄⺫醙㖈♧⚡⥂䫡䚍㢪邆⚥'
+    const runs: PdfRun[] = [{ str: garbled, x: 0, y: 0, w: 100, h: 10 }]
+    expect(pageNeedsOcr(runs)).toBe(true)
+  })
+
+  it('keeps a clean page', () => {
+    const runs: PdfRun[] = [
+      { str: '时间反演对称性可以被打破，而这种看似突兀的皱纹也给了我们一个认识物理世界的窗口。', x: 0, y: 0, w: 100, h: 10 },
+    ]
+    expect(pageNeedsOcr(runs)).toBe(false)
   })
 })
 

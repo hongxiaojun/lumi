@@ -1,6 +1,8 @@
 import './polyfill'
 import { getDocument, GlobalWorkerOptions, PasswordException } from 'pdfjs-dist/build/pdf.mjs'
+import type { PDFPageProxy } from 'pdfjs-dist'
 import type { PdfRun } from './cluster'
+import { looksGarbled } from './garbled'
 import { figuresFromOps, jpegSources, type PdfFigure } from './figures'
 import { runsFromPdfItems } from './items'
 import { outlineFromPdf, type PdfOutlineItem } from './outline'
@@ -41,10 +43,33 @@ export type PdfExtract = {
   images: PdfFigure[][]
 }
 
+export type PdfOcrPage = (page: PDFPageProxy, pageIndex: number) => Promise<PdfRun[] | null>
+
+export type ExtractOptions = {
+  onPage?: (done: number, total: number) => void
+  ocrPage?: PdfOcrPage
+}
+
+const SPARSE_PAGE_CHARS = 12
+
+/** A page needs OCR when its text layer is missing or known-bad. A page with a
+ * handful of chars (a cover, a divider) is left alone; OCR cannot do better. */
+export function pageNeedsOcr(runs: PdfRun[]): boolean {
+  let text = ''
+  let chars = 0
+  for (const run of runs) {
+    const clean = run.str.replace(/\s+/g, '')
+    chars += clean.length
+    text += run.str
+  }
+  return chars < SPARSE_PAGE_CHARS || looksGarbled(text)
+}
+
 export async function extractPdf(
   data: Uint8Array | ArrayBuffer,
-  onPage?: (done: number, total: number) => void,
+  options: ExtractOptions | ((done: number, total: number) => void) = {},
 ): Promise<PdfExtract> {
+  const opts: ExtractOptions = typeof options === 'function' ? { onPage: options } : options
   await ensureWorker()
   const bytes = copyBytes(data)
   // pdf.js transfers this buffer to its worker, so the JPEG scan has to finish first.
@@ -69,11 +94,15 @@ export async function extractPdf(
       const viewport = page.getViewport({ scale: 1 })
       heights.push(viewport.height)
       const content = await page.getTextContent()
-      const runs = runsFromPdfItems(content.items as Array<{ str?: string; width?: number; transform?: number[] }>)
+      let runs = runsFromPdfItems(content.items as Array<{ str?: string; width?: number; transform?: number[] }>)
+      if (opts.ocrPage && pageNeedsOcr(runs)) {
+        const fixed = await opts.ocrPage(page, i - 1).catch(() => null)
+        if (fixed) runs = fixed
+      }
       charCount += runs.reduce((n, r) => n + r.str.replace(/\s+/g, '').length, 0)
       pages.push(runs)
       images.push(await figuresForPage(page, pool, i - 1))
-      onPage?.(i, total)
+      opts.onPage?.(i, total)
     }
     const meta = await pdf.getMetadata().catch(() => null)
     const info = (meta?.info ?? {}) as { Title?: string; Author?: string; Creator?: string }

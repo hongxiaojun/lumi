@@ -4,6 +4,7 @@ mod book_files;
 mod book_protocol;
 mod edge_open;
 mod menu_bar;
+mod ocr;
 mod open_files;
 
 use edge_open::OpenChoice;
@@ -50,7 +51,8 @@ pub fn run() {
             book_files::write_migration_text,
             open_files::take_pending_opens,
             open_files::read_opened_file,
-            edge_open::open_chapter_in_edge
+            edge_open::open_chapter_in_edge,
+            ocr::ocr_page
         ])
         .setup(|app| {
             let window = app
