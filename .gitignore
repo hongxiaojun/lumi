@@ -33,3 +33,4 @@ src-tauri/binaries/
 .tokenize/
 public/fonts/
 tokens.proposed.json
+scripts/signing.local

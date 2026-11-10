@@ -441,6 +441,10 @@ iPad 7（iPadOS 18.7.11）容器里的 `leaf:lastImportError` 仍是 2026-11-09 
 
 硅基流动：同一容器的朗读配置已是 `https://api.siliconflow.cn/v1`、`FunAudioLLM/CosyVoice2-0.5B` 和当时选的音色，密钥字段当时是空的。后一次只改声音会用旧配置整份覆盖，把刚粘上的密钥清掉。现在每次只提交改动的那一项，密钥在写入和发出前去掉 `Bearer`、引号和不可见空格。硅基不接受 OpenAI 的 `instructions` 字段，语气改写进 `<|endofprompt|>` 前面。密钥框不再用 `type=password`，避免 iPad 在失焦时把内容清空。密钥只留在设备上，不进仓库。用户确认这版可以重新导入《财富的真相》，云端试听也正常。
 
+### 2026-11-10 iPhone 12 Pro
+
+同一包 `index-TKsIBWNK.js` 装到 iPhone 12 Pro（iOS 27.0.1）。描述文件原先只有两台设备，按这台手机重新签名后装上，安装序号 4036。归档资源里有 `<|endofprompt|>` 和 `Symbol.asyncIterator`。首次启动被系统拒绝，需要在「设置 → 通用 → VPN 与设备管理」里信任开发者。书架、阅读、PDF 导入和朗读都还没在这台手机上点过。桌面版没有改。
+
 ### 2026-11-06 快照
 
 分支 `audiobook`，本地提交，没有推送。手机是 iPhone 17，bundle id `app.leaf.reader`。最近一次安装序号 3096，当时手机已解锁，进程启动成功。包里能解压到 `data-narrow-menu`。

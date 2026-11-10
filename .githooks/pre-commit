@@ -1,0 +1,10 @@
+#!/bin/zsh
+# Block secrets, and block commits made directly on main.
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+branch="$(git branch --show-current || true)"
+if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+  echo "Refusing a commit on $branch. Run scripts/git-snapshot.sh so the work stays on a feature branch." >&2
+  exit 1
+fi
+"$root/scripts/check-secrets.sh" staged

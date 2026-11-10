@@ -7,8 +7,17 @@
 set -euo pipefail
 
 KIND="${1:-iPhone}"
-TEAM=""
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+LOCAL="$ROOT/scripts/signing.local"
+if [[ -f "$LOCAL" ]]; then
+  # The team id stays in this gitignored file.
+  source "$LOCAL"
+fi
+TEAM="${LUMI_IOS_TEAM:-${TEAM:-}}"
+if [[ -z "$TEAM" ]]; then
+  echo "Missing Apple team. Put TEAM=... in scripts/signing.local or export LUMI_IOS_TEAM." >&2
+  exit 1
+fi
 APP="/tmp/lumi-ios-derived/Build/Products/release-iphoneos/Lumi.app"
 ARCHIVE="/tmp/Lumi-ios.xcarchive"
 

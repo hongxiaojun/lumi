@@ -1,0 +1,3 @@
+# Copy to scripts/signing.local. The copy is gitignored.
+# Put the Apple Development Team ID there, or export LUMI_IOS_TEAM instead.
+TEAM=""

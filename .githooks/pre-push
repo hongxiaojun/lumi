@@ -1,0 +1,17 @@
+#!/bin/zsh
+# Publish only a fast-forward of origin/main, and only after the secret scan.
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" != "refs/heads/main" ]]; then
+    echo "Refusing push to $remote_ref. Use: git push origin HEAD:main" >&2
+    exit 1
+  fi
+  if [[ "$remote_sha" != "0000000000000000000000000000000000000000" ]]; then
+    if ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+      echo "Refusing a non-fast-forward update of main." >&2
+      exit 1
+    fi
+    "$root/scripts/check-secrets.sh" range "$remote_sha" "$local_sha"
+  fi
+done
