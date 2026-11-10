@@ -10,6 +10,7 @@ type Props = {
   notesOn: boolean
   sizeOn: boolean
   searchOn: boolean
+  listenOn: boolean
   onPointer: (over: boolean) => void
   onBack: () => void
   onToc: () => void
@@ -17,6 +18,7 @@ type Props = {
   onNotes: () => void
   onSize: () => void
   onSearch: () => void
+  onListen: () => void
   onMarkHere: () => void
 }
 
@@ -78,6 +80,16 @@ function SearchIcon() {
   )
 }
 
+function ListenIcon() {
+  return (
+    <Glyph>
+      <path {...stroke} d="M4.6 13.4v-1.2a7.4 7.4 0 0 1 14.8 0v1.2" />
+      <path {...stroke} d="M4.6 13h2.6v6.2H5.8a1.2 1.2 0 0 1-1.2-1.2z" />
+      <path {...stroke} d="M19.4 13h-2.6v6.2h1.4a1.2 1.2 0 0 0 1.2-1.2z" />
+    </Glyph>
+  )
+}
+
 function BackIcon() {
   return (
     <Glyph>
@@ -87,8 +99,8 @@ function BackIcon() {
 }
 
 export function BookMenu({
-  title, shown, marked, tocOn, marksOn, notesOn, sizeOn, searchOn,
-  onPointer, onBack, onToc, onMarks, onNotes, onSize, onSearch, onMarkHere,
+  title, shown, marked, tocOn, marksOn, notesOn, sizeOn, searchOn, listenOn,
+  onPointer, onBack, onToc, onMarks, onNotes, onSize, onSearch, onListen, onMarkHere,
 }: Props) {
   function hover(over: boolean) {
     return (event: PointerEvent) => {
@@ -113,6 +125,9 @@ export function BookMenu({
             <BackIcon />
           </button>
           <div className="book-menu-pill">
+            <button type="button" aria-label="朗读" aria-pressed={listenOn} onPointerUp={press(onListen)}>
+              <ListenIcon />
+            </button>
             <button type="button" aria-label="目录" aria-pressed={tocOn} onPointerUp={press(onToc)}>
               <TocIcon />
             </button>

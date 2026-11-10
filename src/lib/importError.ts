@@ -15,6 +15,7 @@ const OURS = [
   FAIL,
   '这本 PDF 有密码，Lumi 打不开',
   '这是扫描版 PDF，没有文字层，暂时不能重排',
+  '这本 PDF 的字体缺文字映射，重排出来全是乱码；请用 Lumi 桌面版导入，会自动 OCR',
   '这本书没有写入服务器',
 ]
 
@@ -31,7 +32,52 @@ export function encryptionRejectReason(xml: string | null | undefined): string |
   return null
 }
 
+/** Longest technical tail we show. Enough for "UnknownError: Setting up fake worker failed",
+ * short enough to stay on one line on a phone. */
+const DETAIL_MAX = 120
+
+/** The last few failures, kept in localStorage so a bug that only reproduces on a phone
+ * can be read back from the app container instead of guessed at from a screenshot.
+ * A history, not a single slot: importPrepared rethrows a wrapped copy of the real
+ * error, and that copy overwrites the original stack. */
+const BREADCRUMB = 'leaf:lastImportError'
+const BREADCRUMB_MAX = 3
+
+function recordImportFailure(error: unknown): void {
+  try {
+    const name = (error instanceof Error ? error.name : '') || field(error, 'name') || typeof error
+    const message =
+      (error instanceof Error ? error.message : '') || field(error, 'message') || String(error ?? '')
+    const stack = ((error instanceof Error ? error.stack : '') || field(error, 'stack')).slice(0, 600)
+    const stored: unknown = JSON.parse(localStorage.getItem(BREADCRUMB) ?? '[]')
+    const history = Array.isArray(stored) ? stored : []
+    history.push({ at: new Date().toISOString(), name, message, stack })
+    localStorage.setItem(BREADCRUMB, JSON.stringify(history.slice(-BREADCRUMB_MAX)))
+  } catch {
+    // A blocked or full quota only loses the breadcrumb, never the import.
+  }
+}
+
+function field(error: unknown, key: string): string {
+  if (typeof error !== 'object' || error === null) return ''
+  const value = (error as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : ''
+}
+
+/** Unknown failures keep a one-line technical tail. Without it a device-only bug
+ * (iOS throws where the Mac does not) reads as a bare "打不开" and cannot be
+ * diagnosed from the screen. Tauri rejects an invoke with a bare string, so
+ * strings carry the whole reason. */
+function withDetail(error: unknown): string {
+  const raw = typeof error === 'string' ? error : field(error, 'message')
+  const name = field(error, 'name')
+  const detail = raw ? `${name ? `${name}: ` : ''}${raw}`.replace(/\s+/g, ' ').trim() : ''
+  if (!detail) return FAIL
+  return `${FAIL}（${detail.slice(0, DETAIL_MAX)}）`
+}
+
 export function explainImportFailure(error: unknown): string {
+  recordImportFailure(error)
   const message = error instanceof Error ? error.message : ''
   const name = error instanceof Error ? error.name : ''
   const known = OURS.find((line) => message.includes(line))
@@ -45,7 +91,7 @@ export function explainImportFailure(error: unknown): string {
   ) {
     return BROKEN
   }
-  return FAIL
+  return withDetail(error)
 }
 
 function isEncryptionEntry(name: string): boolean {

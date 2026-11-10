@@ -5,11 +5,12 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "tts:default",
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://**" },
-        { "url": "http://**" }
+        { "url": "https://*:*" },
+        { "url": "http://*:*" }
       ]
     }
   ]

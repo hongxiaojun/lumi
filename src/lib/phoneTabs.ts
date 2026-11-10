@@ -1,12 +1,12 @@
 export const PHONE_TAB_KEY = 'leaf:phone-tab'
 
-export type PhoneTab = 'home' | 'books' | 'search' | 'brief'
+export type PhoneTab = 'home' | 'books' | 'search' | 'listen'
 
 export const PHONE_TABS: { id: PhoneTab; label: string }[] = [
   { id: 'home', label: '主页' },
   { id: 'books', label: '书库' },
   { id: 'search', label: '搜索' },
-  { id: 'brief', label: '摘要' },
+  { id: 'listen', label: '朗读' },
 ]
 
 type Store = {
@@ -15,7 +15,8 @@ type Store = {
 }
 
 export function phoneTabOf(value: string | null | undefined): PhoneTab {
-  if (value === 'home' || value === 'books' || value === 'search' || value === 'brief') return value
+  if (value === 'brief') return 'listen'
+  if (value === 'home' || value === 'books' || value === 'search' || value === 'listen') return value
   return 'home'
 }
 
@@ -65,12 +66,4 @@ export function phoneSectionOf(value: string | null | undefined): PhoneSection {
   return 'all'
 }
 
-type Lit = { aiBuiltAt?: number | null }
 
-/** Books whose original text has been indexed for citation. Not a generated summary. */
-export function briefBooks<T extends Lit>(books: readonly T[]): T[] {
-  return books
-    .filter((book) => typeof book.aiBuiltAt === 'number' && book.aiBuiltAt > 0)
-    .slice()
-    .sort((a, b) => (b.aiBuiltAt ?? 0) - (a.aiBuiltAt ?? 0))
-}

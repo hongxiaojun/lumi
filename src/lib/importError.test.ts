@@ -133,9 +133,52 @@ describe('explainImportFailure', () => {
     expect(explainImportFailure(new Error('这是扫描版 PDF，没有文字层，暂时不能重排'))).toMatch(/扫描/)
   })
 
-  it('does not surface an English stack', () => {
-    expect(explainImportFailure(new Error('Missing MOBI header'))).toBe('这本书打不开')
-    expect(explainImportFailure('nope')).toBe('这本书打不开')
+  it('keeps the garbled-PDF advice instead of a bare refusal', () => {
+    const reason = '这本 PDF 的字体缺文字映射，重排出来全是乱码；请用 Lumi 桌面版导入，会自动 OCR'
+    expect(explainImportFailure(new Error(reason))).toBe(reason)
+  })
+
+  it('keeps a one-line technical tail on unknown failures', () => {
+    expect(explainImportFailure(new Error('Missing MOBI header'))).toBe(
+      '这本书打不开（Error: Missing MOBI header）',
+    )
+    expect(explainImportFailure(new DOMException('boom\nat worker.js', 'UnknownError'))).toBe(
+      '这本书打不开（UnknownError: boom at worker.js）',
+    )
+    expect(explainImportFailure(new RangeError('x'.repeat(400)))).toHaveLength(
+      '这本书打不开（）'.length + 120,
+    )
+  })
+
+  it('says nothing when there is no message to quote', () => {
+    expect(explainImportFailure(new Error(''))).toBe('这本书打不开')
+    expect(explainImportFailure(null)).toBe('这本书打不开')
+  })
+
+  it('quotes a bare string rejection, the shape Tauri uses for invoke errors', () => {
+    expect(explainImportFailure('OCR is only built for macOS')).toBe(
+      '这本书打不开（OCR is only built for macOS）',
+    )
+  })
+
+  it('keeps a short history of raw failures for reading off the device', () => {
+    localStorage.clear()
+    explainImportFailure(new DOMException('Setting up fake worker failed', 'UnknownError'))
+    explainImportFailure(new Error('这本书打不开（TypeError: boom）'))
+    const saved = JSON.parse(localStorage.getItem('leaf:lastImportError') ?? '[]') as Array<Record<string, unknown>>
+    expect(saved).toHaveLength(2)
+    expect(saved[0].name).toBe('UnknownError')
+    expect(saved[0].message).toBe('Setting up fake worker failed')
+    expect(saved[1].name).toBe('Error')
+    expect(typeof saved[1].at).toBe('string')
+  })
+
+  it('caps the history so repeated failures cannot fill storage', () => {
+    localStorage.clear()
+    for (let i = 0; i < 6; i += 1) explainImportFailure(new Error(`失败 ${i}`))
+    const saved = JSON.parse(localStorage.getItem('leaf:lastImportError') ?? '[]') as Array<Record<string, unknown>>
+    expect(saved).toHaveLength(3)
+    expect(saved[2].message).toBe('失败 5')
   })
 })
 

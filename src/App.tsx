@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FontId, LibraryBook, Prefs, TranslatorConfig } from './types'
+import type { FontId, LibraryBook, Prefs, TranslatorConfig, TtsConfig } from './types'
 import type { Annotation } from './lib/notes'
 import { mergeAnnotation } from './lib/notes'
 import type { Bookmark } from './lib/bookmarks'
 import { toggleBookmark } from './lib/bookmarks'
 import {
+  clearTtsPosition,
   deleteAnnotation,
   deleteBook,
   getBook,
@@ -15,6 +16,8 @@ import {
   loadLocalBookLook,
   loadPrefs,
   loadTranslator,
+  loadTts,
+  loadTtsPosition,
   loadUserFonts,
   putAnnotation,
   putBookmark,
@@ -25,6 +28,7 @@ import {
   saveLocalBookLook,
   savePrefs,
   saveTranslator,
+  saveTts,
   saveUserFonts,
 } from './lib/db'
 import { restoreDiskCatalog } from './lib/bookCatalog'
@@ -64,6 +68,7 @@ import { droppedRecord } from './lib/shelfIndex'
 import { randomId } from './lib/id'
 import { openAllowed, upsertBook } from './lib/parseGate'
 import { DEFAULT_PREFS } from './lib/styles'
+import { DEFAULT_TTS, mergeTts } from './lib/tts/config'
 import type { UserFont } from './lib/userFonts'
 import {
   collectUserFonts,
@@ -90,6 +95,13 @@ export default function App() {
     direction: 'auto',
     secrets: DEFAULT_SECRETS,
   })
+  const [tts, setTts] = useState<TtsConfig>(DEFAULT_TTS)
+  const ttsRef = useRef(tts)
+  useEffect(() => {
+    ttsRef.current = tts
+  }, [tts])
+  const [autoListen, setAutoListen] = useState(false)
+  const [listenResume, setListenResume] = useState<{ cfi?: string | null; fraction?: number } | null>(null)
   const [notes, setNotes] = useState<Annotation[]>([])
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [account, setAccount] = useState<string | null>(null)
@@ -99,6 +111,7 @@ export default function App() {
   const [userFonts, setUserFonts] = useState<UserFont[]>([])
   const [fontNotice, setFontNotice] = useState<string | null>(null)
   const progressTimer = useRef<number | null>(null)
+  const ttsTimer = useRef<number | null>(null)
   const fontLock = useRef(false)
   const hubOn = useRef(false)
   const deviceId = useRef<string | null>(null)
@@ -136,6 +149,11 @@ export default function App() {
           setPrefs(localPrefs)
           setTranslator(await loadTranslator())
           try {
+            setTts(await loadTts())
+          } catch (ttsError) {
+            console.error('loadTts', ttsError)
+          }
+          try {
             await restoreDiskCatalog()
           } catch (catalogError) {
             console.error('M10 catalog', catalogError)
@@ -163,6 +181,11 @@ export default function App() {
             direction: storedTranslator.direction ?? 'auto',
             secrets: { ...DEFAULT_SECRETS, ...storedTranslator.secrets },
           })
+        }
+        try {
+          setTts(await loadTts())
+        } catch (ttsError) {
+          console.error('loadTts', ttsError)
         }
         await publishLocalBooks(device.id)
         await seedHubIfEmpty(device.id)
@@ -301,6 +324,7 @@ export default function App() {
     const book = books.find((row) => row.id === id) ?? (await getBook(id))
     if (hubOn.current) await removeSharedBook(id)
     else await deleteBook(id)
+    await clearTtsPosition(id)
     if (openId === id) setOpenId(null)
     const rows = await refresh()
     try {
@@ -321,12 +345,14 @@ export default function App() {
     await refresh()
   }
 
-  async function handleOpen(id: string) {
+  async function handleOpen(id: string, listen = false) {
     if (!openAllowed(parseGates, id)) return
     const user = deviceId.current
     try {
       const book = hubOn.current && user ? await openSharedBook(user, id) : await getBook(id)
       if (!book) return
+      setAutoListen(listen)
+      setListenResume(listen ? await loadTtsPosition(id) : null)
       book.lastOpenedAt = Date.now()
       if (hubOn.current && user) await saveSharedProgress(user, book)
       else await putBook(book)
@@ -492,6 +518,16 @@ export default function App() {
     else await saveTranslator(next)
   }
 
+  function handleTts(patch: Partial<TtsConfig>) {
+    const next = mergeTts(ttsRef.current, patch)
+    ttsRef.current = next
+    setTts(next)
+    if (ttsTimer.current) window.clearTimeout(ttsTimer.current)
+    ttsTimer.current = window.setTimeout(() => {
+      void saveTts(next).catch((error) => console.error('saveTts', error))
+    }, 250)
+  }
+
   async function handleCreateNote(row: Annotation) {
     let saved = row
     setNotes((cur) => {
@@ -545,11 +581,16 @@ export default function App() {
         book={current}
         prefs={prefs}
         translator={translator}
+        tts={tts}
+        autoListen={autoListen}
+        listenResume={listenResume}
+        onListenStarted={() => setAutoListen(false)}
         notes={notes}
         bookmarks={bookmarks}
         onPrefs={handlePrefs}
         userFonts={userFonts.map((font) => ({ id: font.id, name: font.name }))}
         onTranslator={handleTranslator}
+        onTts={handleTts}
         onProgress={handleProgress}
         onCreateAnnotation={handleCreateNote}
         onUpdateAnnotation={handleUpdateNote}
@@ -557,6 +598,8 @@ export default function App() {
         onToggleBookmark={handleToggleBookmark}
         onDeleteBookmark={handleDeleteBookmark}
         onBack={() => {
+          setAutoListen(false)
+          setListenResume(null)
           setOpenId(null)
           void refresh()
         }}
@@ -572,8 +615,11 @@ export default function App() {
       notice={error}
       parsePending={parsePending}
       parseGates={parseGates}
+      tts={tts}
+      onTts={handleTts}
       onDismissNotice={() => setError(null)}
       onOpen={handleOpen}
+      onListen={(id) => { void handleOpen(id, true) }}
       onImport={handleImport}
       onRemove={handleRemove}
       onDrop={(id) => void handleDropRecord(id)}

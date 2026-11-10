@@ -78,6 +78,36 @@ describe('bookCSS profiles', () => {
     expect(en).toMatch(/Newsreader/)
     expect(fontStack('newsreader')).toMatch(/Newsreader/)
   })
+
+  it('gives listening a larger, single-measure layout without changing the paper', () => {
+    const listen = bookCSS(DEFAULT_PREFS, 'zh', true)
+    expect(listen).toMatch(/max-inline-size:\s*30em/)
+    expect(listen).toMatch(/text-indent:\s*0 !important/)
+    expect(listen).toMatch(/text-align:\s*start !important/)
+    expect(listen).toMatch(/margin:\s*0 auto 0\.95em !important/)
+    expect(listen).toContain(THEMES.find((theme) => theme.id === DEFAULT_PREFS.theme)!.bg)
+    expect(readerCSS(DEFAULT_PREFS, 'zh', '', true)).toContain('max-inline-size: 30em')
+    expect(readerCSS(DEFAULT_PREFS, 'zh', '', false)).not.toContain('max-inline-size: 30em')
+  })
+
+  it('takes listening typography from its own params, not the reading font size', () => {
+    const listen = bookCSS(DEFAULT_PREFS, 'zh', true, { size: 28, leading: 2.2 })
+    expect(listen).toMatch(/font-size:\s*28px !important/)
+    expect(listen).toMatch(/line-height:\s*2\.2 !important/)
+
+    // A big reading font size must not leak into the listening layout.
+    const reader = bookCSS({ ...DEFAULT_PREFS, fontSize: 32 }, 'zh', true, { size: 26, leading: 2.05 })
+    expect(reader).toMatch(/font-size:\s*26px !important/)
+    expect(reader).toMatch(/line-height:\s*2\.05 !important/)
+    expect(reader).toMatch(/font-size:\s*32px/)
+  })
+
+  it('injects a paper-colored wash token for the immersive sentence mask', () => {
+    const css = readerCSS(DEFAULT_PREFS, 'zh', '', true)
+    expect(css).toMatch(/--leaf-read-wash:\s*rgba\(/)
+    const night = readerCSS({ ...DEFAULT_PREFS, theme: 'night' as typeof DEFAULT_PREFS.theme }, 'zh', '', true)
+    expect(night).toMatch(/--leaf-read-wash:\s*rgba\(26,\s*26,\s*26,/)
+  })
 })
 
 describe('Xiaolai page color', () => {
@@ -107,6 +137,34 @@ describe('Xiaolai page color', () => {
   it('ships the read-aloud focus rules into the book page', () => {
     expect(readerCSS(DEFAULT_PREFS, 'zh', '')).toContain('leaf-focus-dim')
     expect(readerCSS(DEFAULT_PREFS, 'en', '')).toContain('prefers-reduced-motion')
+  })
+
+  it('injects the read-aloud mark colors as variables the book page can resolve', () => {
+    const css = readerCSS(DEFAULT_PREFS, 'zh', '', false, {
+      line: 'sentinel-line',
+      word: 'sentinel-word',
+      blend: 'sentinel-blend',
+    })
+    expect(css).toContain('--leaf-read-line: sentinel-line')
+    expect(css).toContain('--leaf-read-word: sentinel-word')
+    expect(css).toContain('--leaf-read-blend: sentinel-blend')
+    // No explicit palette resolves the app stylesheet; jsdom has none, but the
+    // declarations must still be there so the iframe contract stays intact.
+    const fallback = readerCSS(DEFAULT_PREFS, 'zh', '')
+    expect(fallback).toContain('--leaf-read-line:')
+    expect(fallback).toContain('--leaf-read-word:')
+  })
+
+  it('swaps the read-aloud marks to the dark-paper screen blend on night papers', () => {
+    const css = readerCSS({ ...DEFAULT_PREFS, theme: 'night' }, 'zh', '')
+    expect(css).toContain('--leaf-read-blend: screen')
+    expect(css).toContain('--leaf-read-line: #5A4A00')
+    expect(css).toContain('--leaf-read-word: #6E3A00')
+    const warm = readerCSS({ ...DEFAULT_PREFS, theme: 'warmNight' }, 'zh', '')
+    expect(warm).toContain('--leaf-read-blend: screen')
+    // Light papers keep the marker multiply from the app catalog.
+    const light = readerCSS(DEFAULT_PREFS, 'zh', '')
+    expect(light).toContain('--leaf-read-blend: multiply')
   })
 })
 

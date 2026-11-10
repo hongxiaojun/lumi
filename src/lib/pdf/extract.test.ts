@@ -1,9 +1,10 @@
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { classifyPdf, pdfRejectReason } from './classify'
 import { extractPdf, pageNeedsOcr, setPdfAssetUrls, setPdfWorkerSrc } from './extract'
+import { installStreamAsyncIterator } from './polyfill'
 import { blankPdfBytes, encryptedPdfBytes, helloPdfBytes } from './helloPdf'
 import type { PdfRun } from './cluster'
 
@@ -91,4 +92,29 @@ describe('pageNeedsOcr', () => {
     expect(pageNeedsOcr(runs)).toBe(false)
   })
 })
+
+/** iPad and iPhone run WebKit, which has no Symbol.asyncIterator on
+ * ReadableStream. pdf.js reads text with `for await`, so this is the shape the
+ * iPad hit: "这本书打不开（TypeError: undefined is not a function）" on the
+ * first page of every PDF. */
+describe('extractPdf without ReadableStream async iteration', () => {
+  const proto = ReadableStream.prototype as Record<symbol, unknown>
+  const KEY = Symbol.asyncIterator
+  const native = proto[KEY]
+
+  afterEach(() => {
+    Object.defineProperty(proto, KEY, { configurable: true, writable: true, value: native })
+  })
+
+  it('fails on getTextContent, then reads the page once the stream iterator is installed', async () => {
+    Reflect.deleteProperty(proto, KEY)
+    await expect(extractPdf(helloPdfBytes())).rejects.toThrow(/not async iterable|is not a function/)
+
+    installStreamAsyncIterator(ReadableStream)
+    const out = await extractPdf(helloPdfBytes())
+    expect(out.pageCount).toBe(1)
+    expect(out.pages.flat().map((r) => r.str).join('')).toMatch(/Hello/)
+  })
+})
+
 

@@ -16,7 +16,10 @@ const SAMPLE_ID = '00000000-0000-4000-8000-000000000001'
 export async function probeHub(): Promise<boolean> {
   try {
     const res = await fetch('/__leaf-hub/health')
-    return res.ok
+    if (!res.ok) return false
+    // The packaged webview answers unknown paths with index.html and a 200.
+    const body: unknown = await res.json()
+    return typeof body === 'object' && body !== null && (body as { ok?: unknown }).ok === true
   } catch {
     return false
   }

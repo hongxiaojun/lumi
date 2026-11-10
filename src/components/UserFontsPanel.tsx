@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { layerOpeningClick } from '../lib/menuChrome'
 import { userFontId } from '../lib/userFonts'
 
 export type UserFontChoice = {
@@ -26,14 +27,23 @@ export function UserFontsPanel({
   onClose,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const openedAt = useRef(performance.now())
   return (
-    <div className="font-layer" onClick={onClose}>
+    <div
+      className="font-layer"
+      onClick={(event) => {
+        // The tap that opened this layer also sends a click, and that click now
+        // lands on the layer. Ignore the one that arrives with the opening tap.
+        if (event.target !== event.currentTarget) return
+        if (layerOpeningClick(openedAt.current, performance.now())) return
+        onClose()
+      }}
+    >
       <div
         className="font-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="user-font-title"
-        onClick={(event) => event.stopPropagation()}
       >
         <h3 id="user-font-title">我的字体</h3>
         <p className="font-hint">

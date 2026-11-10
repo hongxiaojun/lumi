@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { menuPress, menuShown, pageMenuPinned, pointerHoldsMenu } from './menuChrome'
+import { layerOpeningClick, menuPress, menuShown, pageMenuPinned, pointerHoldsMenu } from './menuChrome'
 
 describe('menuShown', () => {
   it('stays hidden until the pointer, a pin, or an open panel asks for it', () => {
@@ -47,5 +47,14 @@ describe('pointerHoldsMenu', () => {
     expect(pointerHoldsMenu('pen')).toBe(true)
     expect(pointerHoldsMenu('')).toBe(true)
     expect(pointerHoldsMenu('touch')).toBe(false)
+  })
+})
+
+describe('layerOpeningClick', () => {
+  it('ignores the click that arrives with the opening tap, and keeps a later dismissal', () => {
+    expect(layerOpeningClick(1000, 1010)).toBe(true)
+    expect(layerOpeningClick(1000, 1299)).toBe(true)
+    expect(layerOpeningClick(1000, 1300)).toBe(false)
+    expect(layerOpeningClick(1000, 5000)).toBe(false)
   })
 })

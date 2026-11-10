@@ -1,7 +1,8 @@
 import type { PreparedRequest } from './engines'
+import { appFetch } from '../appFetch'
 
 export async function sendRaw(req: PreparedRequest): Promise<string> {
-  const fetchFn = await resolveFetch()
+  const fetchFn = await appFetch()
   const res = await fetchFn(req.url, {
     method: req.method,
     headers: req.headers,
@@ -23,16 +24,4 @@ export async function sendJson(req: PreparedRequest): Promise<unknown> {
   } catch {
     throw new Error('翻译接口返回不是 JSON')
   }
-}
-
-async function resolveFetch(): Promise<typeof fetch> {
-  try {
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      const mod = await import('@tauri-apps/plugin-http')
-      return mod.fetch as unknown as typeof fetch
-    }
-  } catch {
-    // fall through to browser fetch
-  }
-  return fetch
 }

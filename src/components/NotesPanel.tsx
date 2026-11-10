@@ -13,7 +13,10 @@ type Props = {
 export function NotesPanel({ notes, onJump, onRemove, onChangeNote, onChangeColor, onClose }: Props) {
   return (
     <aside className="drawer drawer-right" onClick={(e) => e.stopPropagation()}>
-      <h3>笔记</h3>
+      <header className="panel-head">
+        <h3>笔记</h3>
+        <button className="icon-btn" onClick={onClose}>关闭</button>
+      </header>
       {notes.length === 0 ? (
         <p className="chapter">选中文字后点「划线」或「想法」</p>
       ) : (
@@ -51,9 +54,6 @@ export function NotesPanel({ notes, onJump, onRemove, onChangeNote, onChangeColo
           </article>
         ))
       )}
-      <button className="icon-btn" onClick={onClose} style={{ marginTop: 12 }}>
-        关闭
-      </button>
     </aside>
   )
 }

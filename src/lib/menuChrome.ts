@@ -28,6 +28,13 @@ export function pointerHoldsMenu(pointerType: string): boolean {
   return pointerType !== 'touch'
 }
 
+/** The click that follows a finger-up may land on a layer that the same tap opened. */
+export const OPEN_CLICK_GUARD_MS = 300
+
+export function layerOpeningClick(openedAt: number, now: number): boolean {
+  return now - openedAt < OPEN_CLICK_GUARD_MS
+}
+
 /**
  * A menu button runs on pointer-up. iOS often drops the click that follows a
  * touch, and a click that arrives after the panel opens lands on the scrim

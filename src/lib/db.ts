@@ -1,4 +1,4 @@
-import type { FontId, LibraryBook, Prefs, TranslatorConfig } from '../types'
+import type { FontId, LibraryBook, Prefs, TranslatorConfig, TtsConfig } from '../types'
 import type { Annotation } from './notes'
 import type { Bookmark } from './bookmarks'
 import type { BookLook } from './bookLook'
@@ -10,6 +10,7 @@ import { coverToStore } from './coverBlob'
 import { readBookChunks, readBookUrl } from './ipcBytes'
 import { DEFAULT_PREFS } from './styles'
 import { DEFAULT_SECRETS } from './translate/engines'
+import { normalizeTts } from './tts/config'
 
 const DB_NAME = 'leaf-reader'
 const DB_VERSION = 3
@@ -152,6 +153,8 @@ export async function deleteBook(id: string): Promise<void> {
   const markIndex = marks.objectStore('bookmarks').index('bookId')
   const pinned = (await reqOf(markIndex.getAll(id))) as Bookmark[]
   for (const row of pinned) await reqOf(marks.objectStore('bookmarks').delete(row.id))
+  const kv = db.transaction('kv', 'readwrite')
+  await reqOf(kv.objectStore('kv').delete(ttsPositionKey(id)))
 }
 
 export async function loadPrefs(): Promise<Prefs> {
@@ -231,6 +234,54 @@ export async function saveTranslator(config: TranslatorConfig): Promise<void> {
   const db = await openDb()
   const tx = db.transaction('kv', 'readwrite')
   await reqOf(tx.objectStore('kv').put(config, 'translator'))
+}
+
+export async function loadTts(): Promise<TtsConfig> {
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readonly')
+  const stored = (await reqOf(tx.objectStore('kv').get('tts'))) as Partial<TtsConfig> | undefined
+  return normalizeTts(stored)
+}
+
+export async function saveTts(config: TtsConfig): Promise<void> {
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readwrite')
+  await reqOf(tx.objectStore('kv').put(normalizeTts(config), 'tts'))
+}
+
+/** Where listening stopped, kept apart from the reading CFI and fraction. */
+export type TtsPosition = {
+  cfi?: string | null
+  fraction?: number
+  updatedAt?: number
+}
+
+function ttsPositionKey(bookId: string): string {
+  return `tts-position:${bookId}`
+}
+
+export async function loadTtsPosition(bookId: string): Promise<TtsPosition | null> {
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readonly')
+  const stored = (await reqOf(tx.objectStore('kv').get(ttsPositionKey(bookId)))) as TtsPosition | undefined
+  return stored ?? null
+}
+
+export async function saveTtsPosition(bookId: string, position: TtsPosition): Promise<void> {
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readwrite')
+  const row: TtsPosition = {
+    cfi: position.cfi ?? null,
+    fraction: typeof position.fraction === 'number' ? position.fraction : 0,
+    updatedAt: Date.now(),
+  }
+  await reqOf(tx.objectStore('kv').put(row, ttsPositionKey(bookId)))
+}
+
+export async function clearTtsPosition(bookId: string): Promise<void> {
+  const db = await openDb()
+  const tx = db.transaction('kv', 'readwrite')
+  await reqOf(tx.objectStore('kv').delete(ttsPositionKey(bookId)))
 }
 
 export async function listAnnotations(bookId: string): Promise<Annotation[]> {

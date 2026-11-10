@@ -10,15 +10,19 @@ type Props = {
   onChange: (prefs: Prefs) => void
   onParallel: (on: boolean) => void
   onEngine: () => void
+  onVoice: () => void
   onClose: () => void
 }
 
 export function SettingsPanel({
-  prefs, userFonts = [], parallel, onChange, onParallel, onEngine, onClose,
+  prefs, userFonts = [], parallel, onChange, onParallel, onEngine, onVoice, onClose,
 }: Props) {
   return (
     <div className="sheet" onClick={(e) => e.stopPropagation()}>
-      <h3>阅读设置</h3>
+      <header className="panel-head">
+        <h3>阅读设置</h3>
+        <button className="icon-btn" onClick={onClose}>完成</button>
+      </header>
       <div className="setting">
         <label>字体</label>
         <p className="field-hint">添加自己的字体、并用于全部书，回到书架点「我的字体」。这里点一款字体只改当前这本书。</p>
@@ -127,6 +131,13 @@ export function SettingsPanel({
         </div>
       </div>
       <div className="setting">
+        <label>朗读语音</label>
+        <p className="field-hint">选系统语音，或接一个兼容 OpenAI /audio/speech 的云端声音。语速、语气和听书排版都在里面。</p>
+        <div className="chips">
+          <button className="chip" type="button" onClick={onVoice}>声音与语速</button>
+        </div>
+      </div>
+      <div className="setting">
         <label>朗读时专注</label>
         <p className="field-hint">默认关闭。只在大声朗读时，让当前段以外的段落退后。当前段的对照仍清楚。</p>
         <div className="chips">
@@ -145,11 +156,6 @@ export function SettingsPanel({
             关
           </button>
         </div>
-      </div>
-      <div className="chrome-row" style={{ justifyContent: 'space-between' }}>
-        <button className="icon-btn" onClick={onClose}>
-          完成
-        </button>
       </div>
     </div>
   )

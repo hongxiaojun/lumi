@@ -15,7 +15,7 @@ const debounce = (f, wait, immediate) => {
 }
 
 const lerp = (min, max, x) => x * (max - min) + min
-const easeOutQuad = x => 1 - (1 - x) * (1 - x)
+const easeOutCubic = x => 1 - (1 - x) * (1 - x) * (1 - x)
 const animate = (a, b, duration, ease, render) => new Promise(resolve => {
     let start
     const step = now => {
@@ -238,7 +238,6 @@ class View {
             border: '0',
             display: 'none',
             width: '100%', height: '100%',
-            transformOrigin: 'left center',
             background: 'inherit',
         })
         // `allow-scripts` is needed for events because of WebKit bug
@@ -942,13 +941,20 @@ export class Paginator extends HTMLElement {
         }
         // FIXME: vertical-rl only, not -lr
         if (this.scrolled && this.#vertical) offset = -offset
-        if ((reason === 'snap' || smooth) && this.hasAttribute('animated')) return animate(
-            element[scrollProp], offset, 300, easeOutQuad,
-            x => element[scrollProp] = x,
-        ).then(() => {
-            this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
-            this.#afterScroll(reason)
-        })
+        if ((reason === 'snap' || smooth) && this.hasAttribute('animated')) {
+            const distance = Math.abs(offset - element[scrollProp])
+            const page = this.size
+            // A short settle should not take as long as a full page turn.
+            const duration = this.scrolled || !(page > 0) ? 300
+                : Math.round(Math.min(320, 170 + Math.min(1, distance / page) * 150))
+            return animate(
+                element[scrollProp], offset, duration, easeOutCubic,
+                x => element[scrollProp] = x,
+            ).then(() => {
+                this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
+                this.#afterScroll(reason)
+            })
+        }
         else {
             element[scrollProp] = offset
             this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]
@@ -1101,33 +1107,9 @@ export class Paginator extends HTMLElement {
         for (let index = this.#index + dir; this.#canGoToIndex(index); index += dir)
             if (this.sections[index]?.linear !== 'no') return index
     }
-    // A page turn lifts the sheet. Scroll mode leaves the page flat.
-    #curl(dir, progress) {
-        if (this.scrolled) return
-        const frame = this.#view?.element?.querySelector('iframe')
-        if (!frame) return
-        const amount = Math.max(0, Math.min(1, progress))
-        const sign = dir < 0 ? 1 : -1
-        frame.style.transformOrigin = dir < 0 ? 'right center' : 'left center'
-        frame.style.transform = amount === 0
-            ? ''
-            : `perspective(900px) rotateY(${sign * amount * 168}deg)`
-        frame.style.boxShadow = amount === 0
-            ? ''
-            : `${-sign * 18}px 0 28px rgba(60, 48, 32, ${0.18 * amount})`
-    }
     async #turnPage(dir, distance) {
         if (this.#locked) return
         this.#locked = true
-        if (!this.scrolled) {
-            const start = performance.now()
-            const run = now => {
-                const t = Math.min(1, (now - start) / 280)
-                this.#curl(dir, 1 - (1 - t) * (1 - t))
-                if (t < 1) requestAnimationFrame(run)
-            }
-            requestAnimationFrame(run)
-        }
         const prev = dir === -1
         const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
         if (shouldGo) await this.#goTo({
@@ -1135,7 +1117,6 @@ export class Paginator extends HTMLElement {
             anchor: prev ? () => 1 : () => 0,
         })
         if (shouldGo || !this.hasAttribute('animated')) await wait(100)
-        this.#curl(0, 0)
         this.#locked = false
     }
     prev(distance) {

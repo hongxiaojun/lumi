@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LibraryBook } from '../types'
 import { shelfMarks } from '../lib/format'
 import { parseCaption, parseFractionOf } from '../lib/parseGate'
@@ -77,9 +77,26 @@ export function CoverShelf({
 }: Props) {
   const [held, setHeld] = useState<string | null>(null)
   const timer = useRef<number | null>(null)
+  const holding = useRef(false)
+
+  useEffect(() => {
+    if (held === null) return
+    const away = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('.book.held')) return
+      setHeld(null)
+    }
+    document.addEventListener('pointerdown', away, true)
+    return () => document.removeEventListener('pointerdown', away, true)
+  }, [held])
+
   function hold(id: string) {
     if (timer.current) window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => setHeld(id), 450)
+    holding.current = false
+    timer.current = window.setTimeout(() => {
+      holding.current = true
+      setHeld(id)
+    }, 450)
   }
   function release() {
     if (timer.current) window.clearTimeout(timer.current)
@@ -132,7 +149,13 @@ export function CoverShelf({
               onPointerLeave={release}
               onPointerCancel={release}
               onClick={() => {
-                if (parsing === null && held !== book.id) onOpen(book.id)
+                // The click that ends a long press only revealed the remove
+                // button. A later tap opens the book and puts the remove away.
+                if (holding.current) {
+                  holding.current = false
+                  return
+                }
+                if (parsing === null) onOpen(book.id)
               }}
             >
               <Cover book={book} parsing={parsing} />

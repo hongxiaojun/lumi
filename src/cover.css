@@ -108,19 +108,48 @@
 }
 .cover-shelf .book-remove {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 28px;
-  height: 28px;
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.cover-shelf .book-remove::before {
+  content: "×";
+  position: absolute;
+  inset: 8px;
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.45);
   color: #fff;
   font-size: 16px;
-  opacity: 0;
+  line-height: 28px;
+  text-align: center;
 }
-.cover-shelf .book:hover .book-remove,
-.cover-shelf .book.held .book-remove { opacity: 1; }
-.cover-shelf .book-remove:focus-visible { opacity: 1; }
+@media (hover: hover) {
+  .cover-shelf .book:hover .book-remove { opacity: 1; pointer-events: auto; }
+}
+.cover-shelf .book.held .book-remove,
+.cover-shelf .book-remove:focus-visible { opacity: 1; pointer-events: auto; }
+
+@media (hover: none) {
+  .cover-shelf .book:hover .book-remove { opacity: 0; pointer-events: none; }
+  .cover-shelf .book.held .book-remove { opacity: 1; pointer-events: auto; }
+  .cover-shelf .book-open,
+  .cover-shelf .continue {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .cover-shelf .cover-wrap img {
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+  }
+}
 
 @media (max-width: 719px) {
   .cover-shelf .grid {

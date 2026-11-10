@@ -11,6 +11,18 @@
   --logo-ink: #2a241c;
   --logo-paper: #f4ede0;
   --logo-gold: #c4a056;
+  /* Sheets can open outside the reader. The reader overrides these inline. */
+  --reader-bg: var(--card);
+  --reader-fg: var(--fg);
+  --reader-muted: var(--muted);
+  /* Read-aloud marks. JS paints overlayer rects with these resolved values, so
+     the hexes live here in the token catalog, not in TypeScript. Fluorescent
+     yellow line and orange word, painted opaque with the multiply blend: the
+     paper takes the color and the black text stays black — a real highlighter.
+     Dark papers swap to the screen blend with deep tones in styles.ts. */
+  --leaf-read-line: #FFD43B;
+  --leaf-read-word: #FF922B;
+  --leaf-read-blend: multiply;
 }
 
 * { box-sizing: border-box; }
@@ -93,6 +105,43 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 36px;
+}
+/* Wide shelf keeps the phone's search and listen entries; the phone tab bar
+   is the only place they live below 720px. */
+.shelf-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -14px 0 26px;
+}
+.shelf-tools .shelf-search {
+  flex: 1;
+  min-width: 0;
+  max-width: 360px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: 16px;
+}
+.shelf-tools .btn { flex: none; }
+
+/* No pointer, no hover: the desktop 34px controls get the 44pt the phone
+   branch already uses. Mac windows keep the smaller sizes. */
+@media (hover: none) {
+  .btn,
+  .shelf-switch,
+  .shelf-index button {
+    height: 44px;
+    min-height: 44px;
+  }
+  .icon-btn {
+    min-width: 44px;
+    height: 44px;
+  }
+  .shelf-tools .shelf-search { height: 44px; }
 }
 .brand {
   display: flex;
@@ -325,6 +374,11 @@ button:disabled {
   box-shadow: none;
 }
 .phone-file { display: none; }
+.phone-page > .phone-banner { margin: 0 0 18px; }
+.phone-banner button {
+  min-width: 44px;
+  min-height: 44px;
+}
 .phone-quiet {
   margin: 8px 0 0;
   color: var(--muted);
@@ -340,7 +394,7 @@ button:disabled {
 }
 .phone-chip,
 .phone-search li button,
-.phone-brief li button {
+.phone-listen li button {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -354,18 +408,18 @@ button:disabled {
 }
 .phone-chip strong,
 .phone-search strong,
-.phone-brief strong {
+.phone-listen strong {
   font-size: 15px;
   line-height: 1.35;
 }
 .phone-chip span,
 .phone-search span,
-.phone-brief span {
+.phone-listen li span {
   color: var(--muted);
   font-size: 12px;
 }
 .phone-search ul,
-.phone-brief ul {
+.phone-listen ul {
   list-style: none;
   margin: 14px 0 0;
   padding: 0;
@@ -373,9 +427,68 @@ button:disabled {
   flex-direction: column;
   gap: 10px;
 }
+.listen-start {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  margin: 18px 0 0;
+  padding: 18px;
+  border-radius: 12px;
+  background: linear-gradient(
+    150deg,
+    color-mix(in srgb, var(--accent) 16%, var(--card)),
+    var(--card) 72%
+  );
+  box-shadow: var(--shadow);
+  text-align: left;
+  color: var(--fg);
+}
+.listen-start:disabled { opacity: .55; }
+.listen-start-kicker {
+  font-size: 11px;
+  letter-spacing: .1em;
+  color: var(--accent);
+}
+.listen-start strong {
+  font-family: var(--serif);
+  font-size: 21px;
+  line-height: 1.3;
+}
+.listen-start > span:not(.listen-start-kicker):not(.listen-start-go) {
+  color: var(--muted);
+  font-size: 13px;
+}
+.listen-start-go {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.phone-listen-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.phone-listen-settings > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.phone-listen-settings strong { font-size: 14px; }
+.phone-listen-settings span { color: var(--muted); font-size: 12px; }
+.phone-listen-settings .btn { flex: none; min-height: 44px; }
 .phone-search .text-input {
   width: 100%;
-  height: 40px;
+  height: 44px;
   padding: 0 12px;
   border: 0;
   border-radius: 8px;
@@ -498,8 +611,10 @@ button:disabled {
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
   .chrome-row { gap: 4px; }
-  .text-input,
-  .note-card textarea { font-size: 16px; }
+  /* iOS zoomed the page when a 14px field got focus. reader.css loads after
+     this file, so these selectors have to outrank its .text-input rule. */
+  .phone-search .text-input,
+  .reader .note-card textarea { font-size: 16px; }
 }
 
 @media (min-width: 720px) and (max-width: 1023px) {
@@ -630,19 +745,19 @@ button:disabled {
 }
 .sheet {
   left: 50%;
-  bottom: 0;
+  bottom: var(--keyboard-inset, 0px);
   transform: translateX(-50%);
   width: min(560px, 100%);
-  max-height: min(78dvh, 640px);
+  max-height: min(calc(78dvh - var(--keyboard-inset, 0px)), 640px);
   overflow: auto;
   border-radius: 8px 8px 0 0;
-  padding: 18px 22px calc(28px + env(safe-area-inset-bottom));
+  padding: 0 22px calc(28px + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
 }
 .drawer {
   top: 0; bottom: 0; left: 0;
   width: min(320px, 86vw);
-  padding: 20px 8px 20px 18px;
+  padding: 0 8px 20px 18px;
   overflow: auto;
   box-shadow: 8px 0 32px rgba(0,0,0,.12);
 }
@@ -651,20 +766,28 @@ button:disabled {
   .reader > .drawer.drawer-right {
     top: auto;
     right: 0;
-    bottom: 0;
+    bottom: var(--keyboard-inset, 0px);
     left: 0;
     z-index: 7;
     width: 100%;
     height: auto;
-    max-height: min(72dvh, 640px);
-    padding: max(16px, env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+    max-height: min(calc(72dvh - var(--keyboard-inset, 0px)), 640px);
+    padding: 0 16px calc(16px + env(safe-area-inset-bottom));
     border-radius: 8px 8px 0 0;
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
   }
+  .reader > .drawer .panel-head {
+    padding-top: 16px;
+  }
   .reader > .drawer .toc-item,
   .reader > .drawer .search-hit,
-  .reader > .drawer .icon-btn {
+  .reader > .drawer .icon-btn,
+  .reader > .sheet .icon-btn {
     min-height: 44px;
+  }
+  .reader > .drawer .icon-btn,
+  .reader > .sheet .icon-btn {
+    min-width: 44px;
   }
   .reader > .drawer .text-input { height: 44px; font-size: 16px; }
 }
@@ -675,6 +798,21 @@ button:disabled {
   letter-spacing: 0.12em;
   font-size: 16px;
 }
+.sheet > h3 { padding-top: 18px; }
+.panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-top: 18px;
+  background: var(--reader-bg);
+}
+.drawer .panel-head { padding-top: 20px; }
+.panel-head h3 { margin: 0; }
 .toc-item {
   display: block;
   width: 100%;
@@ -695,6 +833,16 @@ button:disabled {
   color: var(--reader-muted);
   margin-bottom: 8px;
   letter-spacing: 0.08em;
+}
+.link-btn {
+  min-height: 44px;
+  padding: 0 10px;
+  margin-left: 6px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  text-decoration: underline;
 }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
@@ -746,7 +894,8 @@ button:disabled {
   z-index: 2;
 }
 
-.font-layer {
+.font-layer,
+.voice-layer {
   position: fixed;
   inset: 0;
   z-index: 6;
@@ -755,6 +904,7 @@ button:disabled {
   justify-content: center;
   background: rgba(0, 0, 0, 0.22);
 }
+.voice-layer { z-index: 8; }
 .font-panel {
   width: min(560px, 100%);
   max-height: min(70dvh, 640px);

@@ -1,23 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { curlDrag, touchFollows } from './pageCurl'
+import { pageSeam, touchFollows } from './pageCurl'
 
-describe('curlDrag', () => {
-  it('stays a tap until the finger has crossed the page', () => {
-    expect(curlDrag(100, 110, 390)).toEqual({ side: 'stay', progress: 0 })
-    expect(curlDrag(100, 70, 390).side).toBe('right')
-    expect(curlDrag(200, 240, 390).side).toBe('left')
+describe('pageSeam', () => {
+  it('moves the next page edge from the right and the previous from the left', () => {
+    expect(pageSeam(0, 390)).toEqual({ seam: 0.5, shade: 0 })
+    expect(pageSeam(195, 390)).toEqual({ seam: 0.5, shade: 1 })
+    expect(pageSeam(390, 390)).toEqual({ seam: 0, shade: 1 })
+    expect(pageSeam(-195, 390)).toEqual({ seam: 0.5, shade: 1 })
+    expect(pageSeam(-390, 390)).toEqual({ seam: 1, shade: 1 })
   })
 
-  it('fills the curl when the finger reaches the other edge', () => {
-    expect(curlDrag(0, 390, 390).progress).toBe(1)
-    expect(curlDrag(10, 0, 0)).toEqual({ side: 'stay', progress: 0 })
+  it('keeps the shade off when there is no page or no movement', () => {
+    expect(pageSeam(10, 0)).toEqual({ seam: 0.5, shade: 0 })
+    expect(pageSeam(Number.NaN, 390).shade).toBe(0)
+    expect(pageSeam(0, Number.POSITIVE_INFINITY).shade).toBe(0)
   })
 })
 
 describe('touchFollows', () => {
-  it('lets a scrolled book follow the finger and a page book curl', () => {
+  it('lets a scrolled book follow the finger and a page book swipe', () => {
     expect(touchFollows('scrolled', 0)).toBe('scroll')
     expect(touchFollows('paginated', 8)).toBe('tap')
-    expect(touchFollows('paginated', 40)).toBe('curl')
+    expect(touchFollows('paginated', 40)).toBe('swipe')
   })
 })

@@ -14,6 +14,8 @@ export type ReadAloudMark = {
   line: string
   word: string | null
   wordOffset: number | null
+  /** Which identical line in the block to paint, counted from zero. */
+  occurrence?: number
 }
 
 export type ReadAloudPainter = {
@@ -23,20 +25,58 @@ export type ReadAloudPainter = {
 
 export const READ_ALOUD_LINE = 'leaf-read-line'
 export const READ_ALOUD_WORD = 'leaf-read-word'
-// Saturated enough that 0.74 / 0.84 opacity still reads as light blue and
-// light cyan on cream, kraft, and night paper. Amber sat too close to those pages.
-export const READ_ALOUD_LINE_COLOR = '#2F8FE8'
-export const READ_ALOUD_WORD_COLOR = '#14C8C4'
-export const READ_ALOUD_LINE_OPACITY = 0.74
-export const READ_ALOUD_WORD_OPACITY = 0.84
+// The colors live in index.css as catalog tokens (--leaf-read-line /
+// --leaf-read-word) and resolve out of the chapter iframe's computed style.
+// Deliberately not blue: iOS's own selection blue used to read as a stuck
+// system selection, so the tokens are a pen-purple and a magenta.
+export const READ_ALOUD_LINE_VAR = '--leaf-read-line'
+export const READ_ALOUD_WORD_VAR = '--leaf-read-word'
+// Marker blend: multiply keeps black text black on light papers; dark papers
+// inject screen with deep colors instead. See readerCSS in styles.ts.
+export const READ_ALOUD_BLEND_VAR = '--leaf-read-blend'
+export const READ_ALOUD_LINE_OPACITY = 1
+export const READ_ALOUD_WORD_OPACITY = 1
 
-export function readAloudInk(key: string): { color: string; opacity: number } {
-  if (key === READ_ALOUD_WORD) return { color: READ_ALOUD_WORD_COLOR, opacity: READ_ALOUD_WORD_OPACITY }
-  return { color: READ_ALOUD_LINE_COLOR, opacity: READ_ALOUD_LINE_OPACITY }
+/** Immersive wash keys start with this prefix; their ink fades toward the paper. */
+export const READ_WASH_PREFIX = 'leaf-wash'
+export const READ_WASH_VAR = '--leaf-read-wash'
+/**
+ * When the app stylesheet has not injected the wash token, paint nothing
+ * rather than a wrong-colored veil — readerCSS always injects it, so this is
+ * only a guard for unexpected contexts.
+ */
+export const READ_WASH_FALLBACK = 'transparent'
+
+export function readAloudInk(
+  key: string,
+  doc?: Document | null,
+): { color: string; opacity: number; blend: string } {
+  const isWash = key.startsWith(READ_WASH_PREFIX)
+  const name = isWash ? READ_WASH_VAR : key === READ_ALOUD_WORD ? READ_ALOUD_WORD_VAR : READ_ALOUD_LINE_VAR
+  const opacity = isWash ? 1 : key === READ_ALOUD_WORD ? READ_ALOUD_WORD_OPACITY : READ_ALOUD_LINE_OPACITY
+  const read = (root: Document | null | undefined, varName: string): string => {
+    try {
+      if (!root) return ''
+      return getComputedStyle(root.documentElement).getPropertyValue(varName).trim()
+    } catch {
+      return ''
+    }
+  }
+  let color = read(doc, name)
+  let blend = read(doc, READ_ALOUD_BLEND_VAR)
+  if (!color || !blend) {
+    color = color || read(window.document, name)
+    blend = blend || read(window.document, READ_ALOUD_BLEND_VAR)
+  }
+  if (isWash) {
+    // The wash carries its own alpha and covers text, so it must not multiply.
+    return { color: color || READ_WASH_FALLBACK, opacity, blend: 'normal' }
+  }
+  return { color, opacity, blend: blend || 'multiply' }
 }
 
 export type ReadAloudPage = {
-  add: (key: string, range: Range, color: string, opacity: number) => void
+  add: (key: string, range: Range, color: string, opacity: number, blend: string) => void
   remove: (key: string) => void
   redraw: () => void
   scrollTo: (range: Range) => Promise<void> | void
@@ -254,6 +294,7 @@ export function rangeForSpoken(
   line: string,
   word: string | null,
   wordOffset: number | null,
+  occurrence = 0,
 ): { line: Range[]; word: Range | null } | null {
   const doc = source.ownerDocument
   if (!doc || !line) return null
@@ -261,7 +302,7 @@ export function rangeForSpoken(
   const raw = nodes.map((node) => node.data).join('')
   const text = normalizeSpoken(raw)
   // Edge inserts spaces when it wraps a word. The book text often has none.
-  const found = looseSpan(text, line)
+  const found = looseSpan(text, line, occurrence)
   if (!found) return null
   const span = rawSpan(raw, found.start, found.end - found.start)
   if (!span) return null
@@ -301,17 +342,28 @@ function skippedCount(value: string, until: number): number {
   return count
 }
 
-function looseSpan(text: string, line: string): { start: number; end: number } | null {
+function looseSpan(text: string, line: string, occurrence = 0): { start: number; end: number } | null {
   if (!line) return null
-  const exact = text.indexOf(line)
+  const exact = nthIndexOf(text, line, occurrence)
   if (exact >= 0) return { start: exact, end: exact + line.length }
   const hay = squeezeMap(text)
   const needle = squeezeMap(line)
   if (!needle.text) return null
-  const at = hay.text.indexOf(needle.text)
+  const at = nthIndexOf(hay.text, needle.text, occurrence)
   if (at < 0) return null
   const last = at + needle.text.length - 1
   return { start: hay.map[at], end: hay.map[last] + 1 }
+}
+
+function nthIndexOf(hay: string, needle: string, occurrence: number): number {
+  let from = 0
+  for (let n = 0; n <= Math.max(0, occurrence); n += 1) {
+    const at = hay.indexOf(needle, from)
+    if (at < 0) return -1
+    if (n === occurrence) return at
+    from = at + Math.max(1, needle.length)
+  }
+  return -1
 }
 
 function wordRangeFor(
@@ -355,7 +407,7 @@ function spokenMatch(sources: readonly Element[], mark: ReadAloudMark) {
   for (const index of order) {
     const source = sources[index]
     if (!source) continue
-    const ranges = rangeForSpoken(source, mark.line, mark.word, mark.wordOffset)
+    const ranges = rangeForSpoken(source, mark.line, mark.word, mark.wordOffset, mark.occurrence)
     if (ranges) return { index, ranges }
   }
   return null
@@ -546,8 +598,8 @@ export function retargetReadAloud(
   }
   if (!page || !painted) return Promise.resolve(true)
   clearPaint(page)
-  const ink = readAloudInk(READ_ALOUD_LINE)
-  page.add(READ_ALOUD_LINE, painted, ink.color, ink.opacity)
+  const ink = readAloudInk(READ_ALOUD_LINE, bookDoc)
+  page.add(READ_ALOUD_LINE, painted, ink.color, ink.opacity, ink.blend)
   linePartCount = 1
   return Promise.resolve(page.scrollTo(painted)).then(() => {
     page.redraw()
@@ -649,8 +701,8 @@ export function bindReadAloud(
     const followLine = follow && lineKey !== '' && (force || lineKey !== spokenLine) && !dragging
     const painted = paintReadAloud(local, sources, {
       add(key, range) {
-        const ink = readAloudInk(key)
-        surface.add(key, range, ink.color, ink.opacity)
+        const ink = readAloudInk(key, doc)
+        surface.add(key, range, ink.color, ink.opacity, ink.blend)
       },
       remove(key) {
         surface.remove(key)

@@ -16,6 +16,39 @@ import {
   spokenChapterOffset,
   watchReadAloud,
 } from './readAloud'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { afterAll, beforeAll } from 'vitest'
+
+const cssSource = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+
+function markVar(name: string): string {
+  const found = cssSource.match(new RegExp(`${name}:\\s*([^;]+);`))
+  if (!found) throw new Error(`${name} missing from index.css`)
+  return found[1].trim()
+}
+
+const realComputedStyle = window.getComputedStyle
+
+beforeAll(() => {
+  const patched = ((el: Element) => {
+    const real = realComputedStyle(el)
+    return new Proxy(real, {
+      get(target, prop, receiver) {
+        if (prop === 'getPropertyValue') {
+          return (name: string) =>
+            name.startsWith('--leaf-read-') ? markVar(name) : target.getPropertyValue(name)
+        }
+        return Reflect.get(target, prop, receiver)
+      },
+    })
+  }) as typeof window.getComputedStyle
+  window.getComputedStyle = patched
+})
+
+afterAll(() => {
+  window.getComputedStyle = realComputedStyle
+})
 
 function doc(html: string): HTMLElement {
   return new DOMParser().parseFromString(html, 'text/html').body
@@ -225,6 +258,14 @@ describe('rangeForSpoken', () => {
     expect(range?.word?.toString()).toBe('world')
     expect(range?.line.map((item) => item.toString())).toEqual(['hello   world'])
   })
+
+  it('picks the requested repeated sentence instead of always the first', () => {
+    const source = doc('<p>好。好。好。</p>').querySelector('p')!
+    const second = rangeForSpoken(source, '好。', null, null, 1)
+    expect(second?.line.map((range) => range.toString())).toEqual(['好。'])
+    expect(second?.line[0].startOffset).toBe(2)
+    expect(rangeForSpoken(source, '好。', null, null, 3)).toBeNull()
+  })
 })
 
 describe('paintReadAloud', () => {
@@ -313,24 +354,39 @@ describe('paintReadAloud', () => {
 })
 
 describe('readAloudInk', () => {
-  it('uses a light blue sentence and a light cyan word that stay clear of the paper', () => {
+  it('paints marker yellow under the sentence and orange under the word, blended like a real marker', () => {
     const line = readAloudInk('leaf-read-line')
     const word = readAloudInk('leaf-read-word')
     const part = readAloudInk('leaf-read-line:1')
     expect(part).toEqual(line)
-    expect(line.opacity).toBeGreaterThanOrEqual(0.65)
-    expect(word.opacity).toBeGreaterThanOrEqual(0.65)
+    // Opaque marker: the multiply blend keeps black text black, so there is
+    // nothing to see through and no washed-out overlay.
+    expect(line.opacity).toBe(1)
+    expect(word.opacity).toBe(1)
     const lineRgb = rgb(line.color)
     const wordRgb = rgb(word.color)
-    expect(lineRgb.b).toBeGreaterThan(lineRgb.r + 40)
-    expect(lineRgb.b).toBeGreaterThan(lineRgb.g)
-    expect(wordRgb.g).toBeGreaterThan(150)
-    expect(wordRgb.b).toBeGreaterThan(150)
-    expect(wordRgb.r).toBeLessThan(80)
+    // Fluorescent yellow line, orange word: high red, little blue.
+    expect(lineRgb.r).toBeGreaterThan(240)
+    expect(lineRgb.g).toBeGreaterThan(170)
+    expect(lineRgb.b).toBeLessThan(120)
+    expect(wordRgb.r).toBeGreaterThan(230)
+    expect(wordRgb.g).toBeGreaterThan(100)
+    expect(wordRgb.b).toBeLessThan(110)
+    expect(line.blend).toBe(markVar('--leaf-read-blend'))
+    expect(line.blend).toBe('multiply')
+    expect(line.color).toBe(markVar('--leaf-read-line'))
+    expect(word.color).toBe(markVar('--leaf-read-word'))
     for (const paper of ['#F3E9D7', '#E4D0A8', '#F7F1E3', '#FFFFFF', '#CDE7C3', '#1A1A1A', '#121212']) {
       expect(distance(blend(line.color, line.opacity, paper), paper)).toBeGreaterThan(80)
       expect(distance(blend(word.color, word.opacity, paper), paper)).toBeGreaterThan(80)
     }
+  })
+
+  it('falls back to the app root when the book document has no tokens', () => {
+    const bare = new DOMParser().parseFromString('<html><body></body></html>', 'text/html')
+    expect(readAloudInk('leaf-read-line', bare).color).toBe(markVar('--leaf-read-line'))
+    expect(readAloudInk('leaf-read-word', bare).color).toBe(markVar('--leaf-read-word'))
+    expect(readAloudInk('leaf-read-line', bare).blend).toBe(markVar('--leaf-read-blend'))
   })
 })
 
@@ -499,9 +555,13 @@ describe('bindReadAloud', () => {
       p.replaceChildren(lineWithWord('黛玉便知是他', '知', 3))
       await flush()
       expect(scrolled).toEqual(['黛玉便知是他'])
+      const mark = (key: string, text: string) => {
+        const ink = readAloudInk(key)
+        return `${key}:${text}:${ink.color}:${ink.opacity}`
+      }
       expect(added).toEqual([
-        'leaf-read-line:黛玉便知是他:#2F8FE8:0.74',
-        'leaf-read-word:知:#14C8C4:0.84',
+        mark('leaf-read-line', '黛玉便知是他'),
+        mark('leaf-read-word', '知'),
       ])
       expect(redraws).toBe(2)
       added.length = 0
@@ -509,8 +569,8 @@ describe('bindReadAloud', () => {
       await flush()
       expect(scrolled).toEqual(['黛玉便知是他'])
       expect(added).toEqual([
-        'leaf-read-line:黛玉便知是他:#2F8FE8:0.74',
-        'leaf-read-word:是:#14C8C4:0.84',
+        mark('leaf-read-line', '黛玉便知是他'),
+        mark('leaf-read-word', '是'),
       ])
       expect(redraws).toBe(2)
     } finally {

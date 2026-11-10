@@ -57,6 +57,34 @@ export type TranslatorConfig = {
   secrets: TranslatorSecrets
 }
 
+export type TtsProvider = 'system' | 'cloud' | 'azure'
+
+export type TtsConfig = {
+  provider: TtsProvider
+  /** 1.0 is normal. System voices and cloud requests both use this scale. */
+  rate: number
+  /** SpeechSynthesisVoice.voiceURI, empty picks the first matching book language. */
+  systemVoice: string
+  cloudBaseUrl: string
+  cloudKey: string
+  cloudModel: string
+  cloudVoice: string
+  /** Azure Speech region name (eastasia) or a full endpoint host. */
+  azureRegion: string
+  azureKey: string
+  /** Azure neural voice short name, e.g. zh-CN-XiaoxiaoNeural. */
+  azureVoice: string
+  /** Natural-language delivery hint for OpenAI-compatible speech services. */
+  cloudInstructions: string
+  /** Reading typography is replaced by a single-column listening layout while speaking. */
+  listenLayout: boolean
+  /** Listening typography remembers its own size and leading, separate from the reading prefs. */
+  listenFontSize: number
+  listenLineHeight: number
+  /** While listening, blur the other paragraphs and wash the sibling sentences. */
+  immersive: boolean
+}
+
 export type TocItem = {
   label?: string
   href?: string

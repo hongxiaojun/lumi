@@ -6,14 +6,14 @@ import type { Annotation, NoteColor } from '../lib/notes'
 import type { ScriptKind } from '../lib/translate/lang'
 import { colorHex, createAnnotation } from '../lib/notes'
 import { bindMarginTap, pointOf, tapClaims, tapPage, tapPlace } from '../lib/pageTap'
-import { curlDrag, touchFollows } from '../lib/pageCurl'
+import { pageSeam, touchFollows } from '../lib/pageCurl'
 import { readerCSS } from '../lib/styles'
 import { mountUserFonts } from '../lib/userFonts'
 import { loadFontFaces } from '../lib/fonts'
 import { readingFontFaces, subscribeUserFontFaces } from '../lib/userFonts'
 import { languageFromMeta, prepareSection, shouldTypesetEnglish } from '../lib/typeset'
 import { blocksFromDoc, injectTranslations, listenBookSelection, removeTranslations } from '../lib/readerDom'
-import { rangeMenuPoint, sectionIndexForRange } from '../lib/annotate'
+import { rangeMenuPoint, sectionIndexForRange, type BarAnchor } from '../lib/annotate'
 import { SelectionBar } from './SelectionBar'
 import { attachPager } from '../lib/pager'
 import { searchAcceptNode } from '../lib/searchHits'
@@ -22,19 +22,38 @@ import { contextForRange, paintStoredHighlights } from '../lib/anchor'
 import { resolveDirection } from '../lib/translate/lang'
 import { translateBlocks, translateTexts } from '../lib/translate/service'
 import { capBlocks, nextLinearIndexes } from '../lib/translate/prefetch'
-import { appendReadAloud, bindReadAloud, blocksForSources, bookClickGate, keepReadAloud, readAloudLang, readAloudSources, retargetReadAloud } from '../lib/readAloud'
+import { appendReadAloud, bindReadAloud, blocksForSources, bookClickGate, keepReadAloud, paintReadAloud, rangeForSpoken, readAloudInk, readAloudLang, readAloudSources, retargetReadAloud } from '../lib/readAloud'
+import { paintReadFocus } from '../lib/readFocus'
+import { clearListenWash, paintListenWash } from '../lib/listenWash'
+import { speechUnits, type SpeechUnit } from '../lib/tts/speech'
 import { rememberChapter } from '../lib/edgeChapter'
 import { SPREAD_PAGE_PX, spreadColumns } from '../lib/spread'
 import { PAGE_MARGIN_PX, layoutFoot, paintPageFeet, type FootLabel } from '../lib/pageFoot'
 
+export type ListenChapter = {
+  index: number
+  lang: string | null
+  units: SpeechUnit[]
+  /** First sentence at or after the visible range, so reading starts on this page. */
+  startIndex: (range: Range | null) => number
+  paint: (unit: SpeechUnit, word?: { text: string; offset: number } | null, follow?: boolean) => boolean
+  clear: () => void
+}
+
 export type ReaderApi = {
   goLeft: () => void
   goRight: () => void
-  goTo: (href: string) => void
-  goToFraction: (n: number) => void
+  goTo: (href: string) => Promise<unknown>
+  goToFraction: (n: number) => Promise<unknown>
   search: (query: string) => AsyncIterable<unknown>
   clearSearch: () => void
   toc: TocItem[]
+  currentRange: () => Range | null
+  listenChapter: () => ListenChapter | null
+  listenNext: () => Promise<boolean>
+  /** The next chapter's sentences, read without navigating. Null when there is no next chapter. */
+  listenPeek: () => Promise<readonly string[] | null>
+  onListenChapter: (listener: (chapter: ListenChapter) => void) => () => void
 }
 
 type FoliateViewEl = HTMLElement & {
@@ -46,16 +65,19 @@ type FoliateViewEl = HTMLElement & {
   renderer?: {
     setAttribute: (name: string, value: string) => void
     getAttribute: (name: string) => string | null
+    removeAttribute: (name: string) => void
     feet?: HTMLElement[] | null
     page?: number
     pages?: number
+    start?: number
+    size?: number
     render?: () => void
     setStyles?: (css: string) => void
     getContents?: () => {
       doc: Document
       index: number
       overlayer?: {
-        add: (key: string, range: Range, draw: typeof Overlayer.highlight, options: { color: string; opacity?: number }) => void
+        add: (key: string, range: Range, draw: typeof Overlayer.highlight, options: { color: string; opacity?: number; blend?: string }) => void
         remove: (key: string) => void
         redraw: () => void
       }
@@ -87,6 +109,11 @@ type Props = {
   language?: ScriptKind
   prefs: Prefs
   translator: TranslatorConfig
+  listening?: boolean
+  /** Listening typography remembers its own size and leading; null keeps the defaults. */
+  listenStyle?: { size: number; leading: number } | null
+  /** While listening, dim the other paragraphs and wash the sibling sentences. */
+  immersive?: boolean
   annotations: Annotation[]
   onRelocate: (detail: RelocateDetail) => void
   onReady: (api: ReaderApi) => void
@@ -98,16 +125,24 @@ type Props = {
   onPageFoot?: (line: FootLabel | null) => void
 }
 
-function applyLayout(view: FoliateViewEl, flow: FlowId, css: string, width: number, height: number) {
+function applyLayout(
+  view: FoliateViewEl,
+  flow: FlowId,
+  css: string,
+  width: number,
+  height: number,
+  listening = false,
+) {
   const r = view.renderer
   if (!r) return
-  const columns = spreadColumns(width, height, flow)
+  const columns = listening ? 1 : spreadColumns(width, height, flow)
   r.setAttribute('flow', flow)
-  r.setAttribute('animated', '')
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) r.removeAttribute('animated')
+  else r.setAttribute('animated', '')
   r.setAttribute('max-column-count', String(columns))
   r.setAttribute('max-inline-size', `${SPREAD_PAGE_PX}px`)
   r.setAttribute('gap', '8%')
-  r.setAttribute('margin', `${PAGE_MARGIN_PX}px`)
+  r.setAttribute('margin', `${listening ? PAGE_MARGIN_PX + 8 : PAGE_MARGIN_PX}px`)
   r.setStyles?.(css)
   r.render?.()
   const docs = (r.getContents?.() ?? []).map((item) => item.doc)
@@ -141,10 +176,13 @@ function showPageFoot(view: FoliateViewEl, flow: FlowId, sectionFraction: number
 
 function speechMark(
   rects: Parameters<typeof Overlayer.highlight>[0],
-  options: { color?: string; opacity?: number },
+  options: { color?: string; opacity?: number; blend?: string },
 ) {
   const drawn = Overlayer.highlight(rects, options)
-  drawn.style.opacity = String(options.opacity ?? 0.74)
+  // Multiply turns the mark into a real highlighter: the paper takes the color,
+  // the black text stays black. Dark papers inject screen instead.
+  drawn.style.mixBlendMode = options.blend || 'normal'
+  drawn.style.opacity = String(options.opacity ?? 1)
   return drawn
 }
 
@@ -156,8 +194,8 @@ function readAloudPage(view: FoliateViewEl, doc: Document) {
   const renderer = view.renderer
   if (!overlayer || !renderer?.scrollToAnchor) return null
   return {
-    add(key: string, range: Range, color: string, opacity: number) {
-      overlayer.add(key, range, speechMark, { color, opacity })
+    add(key: string, range: Range, color: string, opacity: number, blend: string) {
+      overlayer.add(key, range, speechMark, { color, opacity, blend })
     },
     remove(key: string) {
       overlayer.remove(key)
@@ -175,7 +213,7 @@ function readAloudPage(view: FoliateViewEl, doc: Document) {
 }
 
 export function FoliateHost({
-  file, cfi, bookId, language, prefs, translator, annotations,
+  file, cfi, bookId, language, prefs, translator, listening = false, listenStyle = null, immersive = false, annotations,
   onRelocate, onReady, onCreateAnnotation, onRequestNote, onStatus, onOpenFailed, onUpdateAnnotation,
   onPageFoot,
 }: Props) {
@@ -199,15 +237,23 @@ export function FoliateHost({
   const fontFaces = useRef('')
   const docRef = useRef<Document | null>(null)
   const replaySpeechRef = useRef<(() => void) | null>(null)
+  const listeningRef = useRef(listening)
+  const listenStyleRef = useRef(listenStyle)
+  const immersiveRef = useRef(immersive)
+  const listenRef = useRef<ListenChapter | null>(null)
+  const listenSubs = useRef(new Set<(chapter: ListenChapter) => void>())
   const sectionFrac = useRef(0)
   const pending = useRef<{ range: Range; text: string } | null>(null)
   const lastPen = useRef<NoteColor>('yellow')
-  const [menu, setMenu] = useState<{ top: number; left: number } | null>(null)
+  const [menu, setMenu] = useState<BarAnchor | null>(null)
   const commitRef = useRef<(action: 'highlight' | 'note' | 'translate', color?: NoteColor) => void>(() => {})
 
   useEffect(() => {
     prefsRef.current = prefs
     translatorRef.current = translator
+    listeningRef.current = listening
+    listenStyleRef.current = listenStyle
+    immersiveRef.current = immersive
     bookIdRef.current = bookId
     languageRef.current = language
     annotationsRef.current = annotations
@@ -305,6 +351,7 @@ export function FoliateHost({
     commitRef.current = (action, color) => { void commit(action, color) }
     const commit = async (action: 'highlight' | 'note' | 'translate', color?: NoteColor) => {
       const info = pending.current
+      pending.current = null
       setMenu(null)
       if (!info) return
       const contents = view.renderer?.getContents?.() ?? []
@@ -314,6 +361,9 @@ export function FoliateHost({
         return
       }
       const cfi = view.getCFI(idx, info.range)
+      // Dismiss iOS's own Copy / Look Up menu with the selection it belongs
+      // to. The range is already copied into the annotation.
+      info.range.startContainer.ownerDocument?.getSelection()?.removeAllRanges()
       if (action === 'translate') {
         const pair = resolveDirection(info.text, translatorRef.current.direction)
         onStatusRef.current('正在翻译…')
@@ -376,7 +426,7 @@ export function FoliateHost({
       rememberChapter(doc, frame instanceof HTMLIFrameElement ? frame.src : '')
       scriptRef.current = prepareSection(doc, scriptRef.current)
       const profile = shouldTypesetEnglish(scriptRef.current) ? 'en' : 'zh'
-      applyLayout(view, prefsRef.current.flow, readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current)), hostRef.current?.clientWidth ?? 0, hostRef.current?.clientHeight ?? 0)
+      applyLayout(view, prefsRef.current.flow, readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current), listeningRef.current, undefined, listenStyleRef.current ?? undefined), hostRef.current?.clientWidth ?? 0, hostRef.current?.clientHeight ?? 0, listeningRef.current)
       pending.current = null
       setMenu(null)
       loadDetachers.splice(0).forEach((fn) => fn())
@@ -384,6 +434,93 @@ export function FoliateHost({
       const sources = spokenRoot ? readAloudSources(spokenRoot) : []
       const lang = readAloudLang(scriptRef.current)
       const blocks = blocksForSources(sources)
+      const units = speechUnits(blocks)
+      let speechTurn = 0
+      const paintPage = () => readAloudPage(view, doc)
+      const chapter: ListenChapter = {
+        index: view.renderer?.getContents?.()[0]?.index ?? 0,
+        lang,
+        units,
+        startIndex(range) {
+          if (!range) return 0
+          for (let index = 0; index < units.length; index += 1) {
+            const unit = units[index]
+            const source = sources[unit.blockIndex]
+            if (!source) continue
+            const mapped = rangeForSpoken(source, unit.text, null, null, unit.occurrence)
+            const last = mapped?.line[mapped.line.length - 1]
+            if (!last) continue
+            try {
+              if (last.compareBoundaryPoints(Range.START_TO_START, range) >= 0) return index
+            } catch {
+              return 0
+            }
+          }
+          return 0
+        },
+        paint(unit, word = null, follow = false) {
+          const page = paintPage()
+          if (!page) return false
+          const painter = {
+            add(key: string, range: Range) {
+              const ink = readAloudInk(key, doc)
+              page.add(key, range, ink.color, ink.opacity, ink.blend)
+            },
+            remove(key: string) {
+              page.remove(key)
+            },
+          }
+          const painted = paintReadAloud(
+            {
+              blockIndex: unit.blockIndex,
+              line: unit.text,
+              word: word?.text ?? null,
+              wordOffset: word?.offset ?? null,
+              occurrence: unit.occurrence,
+            },
+            sources,
+            painter,
+            follow
+              ? (range) => {
+                  const ticket = ++speechTurn
+                  void Promise.resolve()
+                    .then(() => page.scrollTo(range))
+                    .then(() => {
+                      if (ticket !== speechTurn) return
+                      page.redraw()
+                      window.requestAnimationFrame?.(() => {
+                        if (ticket === speechTurn) page.redraw()
+                      })
+                    }, () => {})
+                }
+              : null,
+          )
+          const immersive = prefsRef.current.focusRead === true || immersiveRef.current
+          if (immersive) {
+            if (painted) paintReadFocus(sources, unit.blockIndex)
+            if (painted) paintListenWash(units, units.indexOf(unit), sources, painter)
+          } else {
+            paintReadFocus(sources, null)
+            clearListenWash(painter)
+          }
+          return painted
+        },
+        clear() {
+          paintReadFocus(sources, null)
+          const page = paintPage()
+          if (!page) return
+          const painter = {
+            add() {},
+            remove(key: string) {
+              page.remove(key)
+            },
+          }
+          clearListenWash(painter)
+          paintReadAloud(null, sources, painter, null)
+        },
+      }
+      listenRef.current = chapter
+      for (const listener of listenSubs.current) listener(chapter)
       const arriving = wantAhead
       wantAhead = false
       const ticket = ++spokenTicket
@@ -422,38 +559,49 @@ export function FoliateHost({
       let finger = false
       let touchX = 0
       let touchY = 0
-      const frameOf = () => doc.defaultView?.frameElement
-      const paintCurl = (dir: number, progress: number) => {
-        const frame = frameOf()
-        if (!(frame instanceof HTMLElement)) return
-        const amount = Math.max(0, Math.min(1, progress))
-        const sign = dir < 0 ? 1 : -1
-        frame.style.transformOrigin = dir < 0 ? 'right center' : 'left center'
-        frame.style.transition = 'none'
-        frame.style.transform = amount === 0 ? '' : `perspective(900px) rotateY(${sign * amount * 168}deg)`
-        frame.style.boxShadow = amount === 0 ? '' : `${-sign * 18}px 0 28px rgba(60, 48, 32, ${0.18 * amount})`
+      let turnStart = 0
+      let turnFrame = 0
+      const readTurnStart = () => {
+        const start = view.renderer?.start
+        turnStart = typeof start === 'number' && Number.isFinite(start) ? start : 0
       }
-      const clearCurl = () => {
-        const frame = frameOf()
-        if (!(frame instanceof HTMLElement)) return
-        frame.style.transition = 'transform 180ms ease, box-shadow 180ms ease'
-        frame.style.transform = ''
-        frame.style.boxShadow = ''
+      const paintSeam = () => {
+        turnFrame = 0
+        const renderer = view.renderer
+        if (!renderer) return
+        const start = renderer.start
+        const size = renderer.size
+        if (typeof start !== 'number' || typeof size !== 'number') return
+        const { seam, shade } = pageSeam(start - turnStart, size)
+        host.style.setProperty('--leaf-seam', `${seam * 100}%`)
+        host.style.setProperty('--leaf-shade', String(shade))
+      }
+      const scheduleSeam = () => {
+        if (turnFrame) return
+        const schedule = doc.defaultView?.requestAnimationFrame?.bind(doc.defaultView)
+        if (schedule) turnFrame = schedule(paintSeam)
+        else paintSeam()
+      }
+      const endSeam = () => {
+        if (turnFrame) {
+          doc.defaultView?.cancelAnimationFrame?.(turnFrame)
+          turnFrame = 0
+        }
+        delete host.dataset.turning
+        host.style.setProperty('--leaf-shade', '0')
       }
       const onDown = (ev: Event) => {
         finger = ev.type === 'touchstart'
         const point = pointOf(ev)
         touchX = point?.x ?? 0
         touchY = point?.y ?? 0
+        if (finger) readTurnStart()
         gate.down(pending.current != null, touchX, touchY)
       }
-      const onMove = (ev: Event) => {
+      const onMove = () => {
         if (!finger || prefsRef.current.flow === 'scrolled') return
-        const point = pointOf(ev)
-        if (!point) return
-        const drag = curlDrag(touchX, point.x, doc.documentElement.clientWidth || 1)
-        if (drag.side === 'stay') return
-        paintCurl(drag.side === 'left' ? -1 : 1, drag.progress)
+        host.dataset.turning = '1'
+        scheduleSeam()
       }
       const onUp = (ev: Event) => {
         const point = pointOf(ev)
@@ -466,24 +614,19 @@ export function FoliateHost({
       }
       const onTouchEnd = (ev: Event) => {
         const point = pointOf(ev)
+        endSeam()
         if (!point || tapClaims(ev.target)) return
         gate.up(doc.getSelection()?.toString() ?? '', point.x, point.y)
         const follow = touchFollows(
           prefsRef.current.flow,
           Math.hypot(point.x - touchX, point.y - touchY),
         )
-        if (follow === 'scroll') return
-        if (follow === 'curl') {
-          const drag = curlDrag(touchX, point.x, doc.documentElement.clientWidth || 1)
-          clearCurl()
-          if (drag.progress > 0.28) {
-            if (drag.side === 'left') void view.goLeft()
-            else if (drag.side === 'right') void view.goRight()
-          }
-          return
-        }
+        // The paginator owns the finger-following scroll and its snap. A swipe
+        // must not also call goLeft/goRight, or two animations race.
+        if (follow !== 'tap') return
         runTap(point.x)
       }
+      const onTouchCancel = () => endSeam()
       const runTap = (clientX: number) => {
         const article = host.querySelector(':scope > article.read-aloud')
         const speaking = article instanceof HTMLElement && article.dataset.leafSpeaking === '1'
@@ -507,6 +650,7 @@ export function FoliateHost({
       doc.addEventListener('mouseup', onUp)
       doc.addEventListener('click', onClick)
       doc.addEventListener('touchend', onTouchEnd)
+      doc.addEventListener('touchcancel', onTouchCancel)
       loadDetachers.push(() => {
         doc.removeEventListener('mousedown', onDown)
         doc.removeEventListener('touchstart', onDown)
@@ -514,6 +658,8 @@ export function FoliateHost({
         doc.removeEventListener('mouseup', onUp)
         doc.removeEventListener('click', onClick)
         doc.removeEventListener('touchend', onTouchEnd)
+        doc.removeEventListener('touchcancel', onTouchCancel)
+        endSeam()
       })
       doc.addEventListener('keydown', (ev) => {
         if (ev.key === 'ArrowLeft' || ev.key === 'PageUp') {
@@ -535,7 +681,7 @@ export function FoliateHost({
         const hostEl = hostRef.current
         const place = () => {
           if (pending.current !== info || !hostRef.current) return
-          setMenu(rangeMenuPoint(info.range, hostEl))
+          setMenu(rangeMenuPoint(info.range, hostEl.parentElement ?? hostEl))
         }
         void retargetReadAloud(
           host,
@@ -636,14 +782,51 @@ export function FoliateHost({
         if (startCfi.current) await view.init({ lastLocation: startCfi.current })
         else await view.init({ showTextStart: true })
         if (gone) return
+        const listeners = listenSubs.current
         onReadyRef.current({
           goLeft: () => void view.goLeft(),
           goRight: () => void view.goRight(),
-          goTo: (href) => void view.goTo(href),
-          goToFraction: (n) => void view.goToFraction(n),
+          goTo: (href) => view.goTo(href),
+          goToFraction: (n) => view.goToFraction(n),
           search: (query) => view.search({ query, acceptNode: searchAcceptNode }),
           clearSearch: () => view.clearSearch(),
           toc: view.book?.toc ?? [],
+          currentRange: () => view.lastLocation?.range ?? null,
+          listenChapter: () => listenRef.current,
+          listenNext: async () => {
+            const here = view.renderer?.getContents?.()[0]?.index ?? 0
+            const sections = view.book?.sections ?? []
+            for (let index = here + 1; index < sections.length; index += 1) {
+              if (sections[index]?.linear === 'no') continue
+              try {
+                await view.goTo(index)
+                return true
+              } catch {
+                return false
+              }
+            }
+            return false
+          },
+          listenPeek: async () => {
+            const here = view.renderer?.getContents?.()[0]?.index ?? 0
+            const [nextIndex] = nextLinearIndexes(view.book?.sections ?? [], here, 1)
+            const section = nextIndex === undefined ? undefined : view.book?.sections?.[nextIndex]
+            if (!section?.createDocument) return null
+            try {
+              const doc = await section.createDocument()
+              const spokenRoot = doc.body ?? doc.documentElement
+              const sources = spokenRoot ? readAloudSources(spokenRoot) : []
+              return speechUnits(blocksForSources(sources)).map((unit) => unit.text)
+            } catch {
+              return null
+            }
+          },
+          onListenChapter: (listener) => {
+            listeners.add(listener)
+            return () => {
+              listeners.delete(listener)
+            }
+          },
         })
       } catch (error) {
         console.error(error)
@@ -654,6 +837,7 @@ export function FoliateHost({
     return () => {
       gone = true
       rememberChapter(null)
+      listenRef.current = null
       loadDetachers.forEach((fn) => fn())
       sessionDetachers.forEach((fn) => fn())
       try {
@@ -667,13 +851,30 @@ export function FoliateHost({
   }, [file])
 
   useEffect(() => {
+    const view = viewRef.current
+    const host = hostRef.current
+    if (!view?.renderer || !docRef.current || !host) return
+    const profile = shouldTypesetEnglish(scriptRef.current) ? 'en' : 'zh'
+    const range = view.lastLocation?.range
+    applyLayout(
+      view,
+      prefsRef.current.flow,
+      readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current), listening, undefined, listenStyle ?? undefined),
+      host.clientWidth,
+      host.clientHeight,
+      listening,
+    )
+    if (range) void view.renderer.scrollToAnchor?.(range)
+  }, [listening, listenStyle])
+
+  useEffect(() => {
     const host = hostRef.current
     if (!host) return
     const apply = () => {
       const renderer = viewRef.current?.renderer
       if (!renderer) return
       const flow = prefsRef.current.flow
-      const next = String(spreadColumns(host.clientWidth, host.clientHeight, flow))
+      const next = String(listeningRef.current ? 1 : spreadColumns(host.clientWidth, host.clientHeight, flow))
       if (renderer.getAttribute('max-column-count') === next) return
       renderer.setAttribute('max-column-count', next)
       renderer.render?.()
@@ -691,9 +892,10 @@ export function FoliateHost({
       applyLayout(
         view,
         prefsRef.current.flow,
-        readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current)),
+        readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current), listeningRef.current, undefined, listenStyleRef.current ?? undefined),
         hostRef.current?.clientWidth ?? 0,
         hostRef.current?.clientHeight ?? 0,
+        listeningRef.current,
       )
     })
   }, [])
@@ -702,7 +904,7 @@ export function FoliateHost({
     const view = viewRef.current
     if (!view?.renderer) return
     const profile = shouldTypesetEnglish(scriptRef.current) ? 'en' : 'zh'
-    applyLayout(view, prefs.flow, readerCSS(prefs, profile, readingFontFaces(fontFaces.current)), hostRef.current?.clientWidth ?? 0, hostRef.current?.clientHeight ?? 0)
+    applyLayout(view, prefs.flow, readerCSS(prefs, profile, readingFontFaces(fontFaces.current), listeningRef.current, undefined, listenStyleRef.current ?? undefined), hostRef.current?.clientWidth ?? 0, hostRef.current?.clientHeight ?? 0, listeningRef.current)
     replaySpeechRef.current?.()
     let cancelled = false
     const timer = window.setTimeout(() => {
@@ -750,7 +952,9 @@ export function FoliateHost({
       {menu && (
         <SelectionBar
           top={menu.top}
-          left={menu.left}
+          bottom={menu.bottom}
+          center={menu.center}
+          stageRef={hostRef}
           onHighlight={(color) => {
             lastPen.current = color
             void commitRef.current('highlight', color)

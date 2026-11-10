@@ -75,4 +75,46 @@ describe('listenBookSelection', () => {
     stop()
     paragraph.remove()
   })
+
+  it('follows a selection extended by dragging a handle', () => {
+    const paragraph = document.createElement('p')
+    paragraph.textContent = '黛玉便知是他'
+    document.body.append(paragraph)
+    const seen: string[] = []
+    const queued: FrameRequestCallback[] = []
+    const real = window.requestAnimationFrame.bind(window)
+    window.requestAnimationFrame = (fn) => {
+      queued.push(fn)
+      return queued.length
+    }
+    const stop = listenBookSelection(document, (info) => seen.push(info?.text ?? ''))
+    const sel = document.getSelection()!
+    const word = document.createRange()
+    word.setStart(paragraph.firstChild!, 0)
+    word.setEnd(paragraph.firstChild!, 2)
+    sel.removeAllRanges()
+    sel.addRange(word)
+    document.dispatchEvent(new Event('selectionchange'))
+    expect(queued).toHaveLength(1)
+    queued[0](0)
+    expect(seen.at(-1)).toBe('黛玉')
+
+    // iOS moves the handle outside the chapter: only selectionchange fires.
+    const sentence = document.createRange()
+    sentence.setStart(paragraph.firstChild!, 0)
+    sentence.setEnd(paragraph.firstChild!, 6)
+    sel.removeAllRanges()
+    sel.addRange(sentence)
+    document.dispatchEvent(new Event('selectionchange'))
+    expect(queued).toHaveLength(2)
+    queued[1](0)
+    expect(seen.at(-1)).toBe('黛玉便知是他')
+
+    window.requestAnimationFrame = real
+    sel.removeAllRanges()
+    document.dispatchEvent(new MouseEvent('mouseup'))
+    expect(seen.at(-1)).toBe('')
+    stop()
+    paragraph.remove()
+  })
 })

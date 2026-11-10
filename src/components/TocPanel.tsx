@@ -31,11 +31,11 @@ function Rows({ items, depth, onJump }: { items: TocItem[]; depth: number; onJum
 export function TocPanel({ items, onJump, onClose }: Props) {
   return (
     <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-      <h3>目录</h3>
+      <header className="panel-head">
+        <h3>目录</h3>
+        <button className="icon-btn" onClick={onClose}>关闭</button>
+      </header>
       {items.length === 0 ? <p className="chapter">这本书没有目录</p> : <Rows items={items} depth={0} onJump={onJump} />}
-      <button className="icon-btn" onClick={onClose} style={{ marginTop: 12 }}>
-        关闭
-      </button>
     </aside>
   )
 }

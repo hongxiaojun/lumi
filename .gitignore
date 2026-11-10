@@ -31,3 +31,5 @@ src-tauri/gen
 data/
 src-tauri/binaries/
 .tokenize/
+public/fonts/
+tokens.proposed.json

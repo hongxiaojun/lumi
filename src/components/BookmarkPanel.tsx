@@ -12,7 +12,10 @@ type Props = {
 export function BookmarkPanel({ marks, current, onToggleHere, onJump, onRemove, onClose }: Props) {
   return (
     <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-      <h3>书签</h3>
+      <header className="panel-head">
+        <h3>书签</h3>
+        <button className="icon-btn" onClick={onClose}>关闭</button>
+      </header>
       <button className={`icon-btn ${current ? 'on' : ''}`} onClick={onToggleHere}>
         {current ? '取消此处标记' : '标记此处'}
       </button>
@@ -32,9 +35,6 @@ export function BookmarkPanel({ marks, current, onToggleHere, onJump, onRemove, 
           ))}
         </div>
       )}
-      <button className="icon-btn" onClick={onClose} style={{ marginTop: 12 }}>
-        关闭
-      </button>
     </aside>
   )
 }

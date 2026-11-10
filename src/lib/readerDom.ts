@@ -37,26 +37,44 @@ export function listenBookSelection(
   doc: Document,
   onSelect: (info: { range: Range; text: string } | null) => void,
 ): () => void {
-  const onUp = () => {
-    const read = () => {
-      const sel = doc.getSelection()
-      if (!sel || sel.isCollapsed || !sel.rangeCount) {
-        onSelect(null)
-        return
-      }
-      const clipped = clipRangeToContent(sel.getRangeAt(0).cloneRange())
-      onSelect(clipped)
+  let frame = 0
+  const read = () => {
+    frame = 0
+    const sel = doc.getSelection()
+    if (!sel || sel.isCollapsed || !sel.rangeCount) {
+      onSelect(null)
+      return
     }
+    const clipped = clipRangeToContent(sel.getRangeAt(0).cloneRange())
+    onSelect(clipped)
+  }
+  const onUp = () => {
     read()
     // iOS commits the selection after touchend. One more frame catches it.
     const schedule = doc.defaultView?.requestAnimationFrame?.bind(doc.defaultView)
     if (schedule) schedule(read)
   }
+  const onChange = () => {
+    // Dragging a selection handle runs outside the chapter: no touchend
+    // arrives here, so a long-press alone would keep only its first word.
+    const sel = doc.getSelection()
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return
+    const schedule = doc.defaultView?.requestAnimationFrame?.bind(doc.defaultView)
+    if (!schedule) {
+      read()
+      return
+    }
+    if (frame) doc.defaultView?.cancelAnimationFrame?.(frame)
+    frame = schedule(read)
+  }
   doc.addEventListener('mouseup', onUp)
   doc.addEventListener('touchend', onUp)
+  doc.addEventListener('selectionchange', onChange)
   return () => {
     doc.removeEventListener('mouseup', onUp)
     doc.removeEventListener('touchend', onUp)
+    doc.removeEventListener('selectionchange', onChange)
+    if (frame) doc.defaultView?.cancelAnimationFrame?.(frame)
   }
 }
 

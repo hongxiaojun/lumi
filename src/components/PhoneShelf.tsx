@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import type { LibraryBook } from '../types'
+import type { LibraryBook, TtsConfig } from '../types'
 import { shelfMarks } from '../lib/format'
-import { parseFractionOf } from '../lib/parseGate'
+import { parseCaption, parseFractionOf } from '../lib/parseGate'
 import {
   booksInSection,
   emptyIndexCopy,
@@ -10,7 +10,6 @@ import {
   type ShelfSection,
 } from '../lib/shelfIndex'
 import {
-  briefBooks,
   continueBooks,
   matchesQuery,
   PHONE_TABS,
@@ -21,25 +20,48 @@ import {
 import { menuPress } from '../lib/menuChrome'
 import { browserShelfStorage } from '../lib/shelfView'
 import { CoverShelf } from './CoverShelf'
+import { ListenShelf } from './ListenShelf'
+import { ParseBar } from './ParseBar'
 
 type Props = {
   books: LibraryBook[]
   parseGates?: Record<string, number>
+  parsePending?: { name: string; fraction: number } | null
+  notice?: string | null
+  onDismissNotice?: () => void
+  tts: TtsConfig
   onOpen: (id: string) => void
+  onListen: (id: string) => void
   onRemove: (id: string) => void
   onDrop: (id: string) => void
   onImport: () => void
   onFonts: () => void
+  onVoice: () => void
 }
 
-export function PhoneShelf({ books, parseGates, onOpen, onRemove, onDrop, onImport, onFonts }: Props) {
+export function PhoneShelf({
+  books,
+  parseGates,
+  parsePending,
+  notice,
+  tts,
+  onDismissNotice,
+  onOpen,
+  onListen,
+  onRemove,
+  onDrop,
+  onImport,
+  onFonts,
+  onVoice,
+}: Props) {
   const [tab, setTab] = useState<PhoneTab>(() => readPhoneTab(browserShelfStorage()))
   const [section, setSection] = useState<ShelfSection>('library')
   const [query, setQuery] = useState('')
   const recent = continueBooks(books, 6)
   const listed = booksInSection(books, section)
   const found = books.filter((book) => matchesQuery(book, query))
-  const briefs = briefBooks(books)
+  const listenRecent = continueBooks(books, 8)
+  const listenShelf = listenRecent.length ? listenRecent : books
   const phrase = shelfMarkPhrase(section)
   function mark(id: string) {
     if (shelfMark(section) === 'delete') onRemove(id)
@@ -54,6 +76,24 @@ export function PhoneShelf({ books, parseGates, onOpen, onRemove, onDrop, onImpo
   return (
     <div className="phone-shelf">
       <div className="phone-page">
+        {parsePending ? (
+          <div className="parse-banner phone-banner" role="status">
+            <p>
+              正在解析《{parsePending.name}》
+              {' · '}
+              {parseCaption(parsePending.fraction)}
+            </p>
+            <ParseBar fraction={parsePending.fraction} />
+          </div>
+        ) : null}
+        {notice ? (
+          <div className="import-notice phone-banner" role="alert">
+            <p>{notice}</p>
+            <button type="button" onClick={onDismissNotice} aria-label="关闭导入提示">
+              关闭
+            </button>
+          </div>
+        ) : null}
         {tab === 'home' ? (
           <Home
             books={recent}
@@ -79,7 +119,15 @@ export function PhoneShelf({ books, parseGates, onOpen, onRemove, onDrop, onImpo
         {tab === 'search' ? (
           <Search books={found} query={query} parseGates={parseGates} onQuery={setQuery} onOpen={onOpen} />
         ) : null}
-        {tab === 'brief' ? <Brief books={briefs} onOpen={onOpen} /> : null}
+        {tab === 'listen' ? (
+          <ListenShelf
+            books={listenShelf}
+            parseGates={parseGates}
+            tts={tts}
+            onListen={onListen}
+            onVoice={onVoice}
+          />
+        ) : null}
       </div>
       <nav className="phone-tabs" aria-label="书架页面">
         {PHONE_TABS.map((item) => (
@@ -209,26 +257,6 @@ function Search({
             </li>
           )
         })}
-      </ul>
-    </section>
-  )
-}
-
-function Brief({ books, onOpen }: { books: LibraryBook[]; onOpen: (id: string) => void }) {
-  return (
-    <section className="phone-brief">
-      <h1>摘要</h1>
-      <p className="phone-quiet">已点亮的书可以按原句引用。还没点亮的书留在书库里，导入时才会生成骨架。</p>
-      {books.length === 0 ? <p className="phone-quiet">还没有点亮的书。</p> : null}
-      <ul>
-        {books.map((book) => (
-          <li key={book.id}>
-            <button type="button" onClick={() => onOpen(book.id)}>
-              <strong>{book.title}</strong>
-              <span>{book.author || '未知作者'}</span>
-            </button>
-          </li>
-        ))}
       </ul>
     </section>
   )

@@ -26,7 +26,10 @@ export function SearchPanel({ hits, searching, capped, onQuery, onJump, onClose 
 
   return (
     <aside className="drawer" onClick={(e) => e.stopPropagation()}>
-      <h3>搜索</h3>
+      <header className="panel-head">
+        <h3>搜索</h3>
+        <button className="icon-btn" onClick={onClose}>关闭</button>
+      </header>
       <input
         ref={inputRef}
         className="text-input"
@@ -56,9 +59,6 @@ export function SearchPanel({ hits, searching, capped, onQuery, onJump, onClose 
           </button>
         ))}
       </div>
-      <button className="icon-btn" onClick={onClose} style={{ marginTop: 12 }}>
-        关闭
-      </button>
     </aside>
   )
 }

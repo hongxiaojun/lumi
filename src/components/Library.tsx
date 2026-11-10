@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { LibraryBook } from '../types'
+import type { LibraryBook, TtsConfig } from '../types'
 import { shelfMarks } from '../lib/format'
 import { featuredBookId, plankRows, plankSize } from '../lib/shelfMotion'
 import { parseCaption, parseFractionOf } from '../lib/parseGate'
 import {
-  SHELF_INDEX,
-  booksInSection,
   emptyIndexCopy,
   shelfMark,
   shelfMarkPhrase,
@@ -14,14 +12,17 @@ import {
   writeShelfSection,
   type ShelfSection,
 } from '../lib/shelfIndex'
+import { shelfRows } from '../lib/shelfQuery'
 import { browserShelfStorage, readShelfView, writeShelfView, type ShelfView } from '../lib/shelfView'
 import { CoverShelf } from './CoverShelf'
+import { ListenShelf } from './ListenShelf'
 import { PhoneShelf } from './PhoneShelf'
 import { ShelfIndex } from './ShelfIndex'
 import { LeafLogo } from './LeafLogo'
 import { ParseBar } from './ParseBar'
 import { ShelfBook } from './ShelfBook'
 import { UserFontsPanel, type UserFontChoice } from './UserFontsPanel'
+import { VoiceSheet } from './VoiceSheet'
 import '../shelf.css'
 
 type Props = {
@@ -32,7 +33,10 @@ type Props = {
   parsePending?: { name: string; fraction: number } | null
   parseGates?: Record<string, number>
   onDismissNotice?: () => void
+  tts: TtsConfig
+  onTts: (patch: Partial<TtsConfig>) => void
   onOpen: (id: string) => void
+  onListen: (id: string) => void
   onImport: (files: FileList | File[]) => void
   onRemove: (id: string) => void
   onDrop: (id: string) => void
@@ -51,8 +55,11 @@ export function Library({
   notice,
   parsePending,
   parseGates,
+  tts,
+  onTts,
   onDismissNotice,
   onOpen,
+  onListen,
   onImport,
   onRemove,
   onDrop,
@@ -71,10 +78,14 @@ export function Library({
   const [view, setView] = useState<ShelfView>(() => readShelfView(browserShelfStorage()))
   const [section, setSection] = useState<ShelfSection>(() => readShelfSection(browserShelfStorage()))
   const [fontsOpen, setFontsOpen] = useState(false)
+  const [voiceOpen, setVoiceOpen] = useState(false)
+  const [listenOpen, setListenOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 719px)').matches)
-  const shownBooks = booksInSection(books, section)
+  const rows = shelfRows(books, section, query)
+  const shownBooks = rows.books
   const counts = sectionCounts(books)
-  const sectionLabel = SHELF_INDEX.find((item) => item.id === section)?.label ?? '我的藏书'
+  const sectionLabel = rows.title
   const continueKicker = section === 'finished' ? '已读完' : '继续阅读'
   const markPhrase = shelfMarkPhrase(section)
   function markBook(id: string) {
@@ -157,11 +168,17 @@ export function Library({
         <PhoneShelf
           books={books}
           parseGates={parseGates}
+          parsePending={parsePending}
+          notice={notice}
+          tts={tts}
+          onDismissNotice={onDismissNotice}
           onOpen={onOpen}
+          onListen={onListen}
           onRemove={onRemove}
           onDrop={onDrop}
           onImport={() => inputRef.current?.click()}
           onFonts={() => setFontsOpen(true)}
+          onVoice={() => setVoiceOpen(true)}
         />
       ) : (
         <ShelfIndex section={section} counts={counts} onPick={pick} />
@@ -189,6 +206,37 @@ export function Library({
           onClose={() => setFontsOpen(false)}
         />
       ) : null}
+      {voiceOpen ? (
+        <div className="voice-layer" role="presentation" onClick={() => setVoiceOpen(false)}>
+          <VoiceSheet config={tts} onChange={onTts} onClose={() => setVoiceOpen(false)} />
+        </div>
+      ) : null}
+      {listenOpen ? (
+        <div className="voice-layer" role="presentation" onClick={() => setListenOpen(false)}>
+          <div className="sheet" onClick={(event) => event.stopPropagation()}>
+            <header className="panel-head">
+              <h3>朗读</h3>
+              <button className="icon-btn" type="button" onClick={() => setListenOpen(false)}>
+                完成
+              </button>
+            </header>
+            <ListenShelf
+              books={books}
+              parseGates={parseGates}
+              tts={tts}
+              heading={false}
+              onListen={(id) => {
+                setListenOpen(false)
+                onListen(id)
+              }}
+              onVoice={() => {
+                setListenOpen(false)
+                setVoiceOpen(true)
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
       <div className="library-main" hidden={phone}>
       <header className="library-head">
         <div className="brand">
@@ -208,6 +256,9 @@ export function Library({
               动态
             </button>
           </div>
+          <button className="btn" type="button" onClick={() => setVoiceOpen(true)}>
+            朗读设置
+          </button>
           <button className="btn" type="button" disabled={loading} onClick={() => setFontsOpen(true)}>
             我的字体
           </button>
@@ -216,6 +267,25 @@ export function Library({
           </button>
         </div>
       </header>
+
+      <div className="shelf-tools" data-wide-shelf="search-listen">
+        <input
+          className="text-input shelf-search"
+          type="search"
+          value={query}
+          placeholder="搜索书名、作者或文件名"
+          aria-label="搜索书架"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        {query ? (
+          <button className="btn" type="button" onClick={() => setQuery('')}>
+            清除
+          </button>
+        ) : null}
+        <button className="btn" type="button" onClick={() => setListenOpen(true)}>
+          朗读
+        </button>
+      </div>
 
       {parsePending ? (
         <div className="parse-banner" role="status">
@@ -278,7 +348,7 @@ export function Library({
         </div>
       ) : shownBooks.length === 0 ? (
         <div className="empty">
-          <h2>{emptyIndexCopy(section)}</h2>
+          <h2>{rows.searching ? '书架上没有这本书。' : emptyIndexCopy(section)}</h2>
         </div>
       ) : (
         view === 'cover' ? (

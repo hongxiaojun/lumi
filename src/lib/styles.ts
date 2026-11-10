@@ -159,7 +159,12 @@ function emphasisCSS(script: TypesetScript): string {
   return `b,strong{font-family:inherit !important;font-size:inherit !important;font-weight:400 !important;font-synthesis:none !important;line-height:inherit !important;letter-spacing:inherit !important;word-spacing:inherit !important;text-autospace:inherit !important;${trim}font-kerning:inherit !important;line-break:inherit !important;text-shadow:none !important;-webkit-text-stroke:0 !important;}`
 }
 
-export function bookCSS(prefs: Prefs, script: TypesetScript = 'zh'): string {
+export function bookCSS(
+  prefs: Prefs,
+  script: TypesetScript = 'zh',
+  listening = false,
+  listen: ListenType = { size: 26, leading: 2.05 },
+): string {
   const theme = themeOf(prefs.theme)
   const stack = fontStack(prefs.font)
   const bodyFace = pinnedBodyFace(stack)
@@ -184,6 +189,7 @@ export function bookCSS(prefs: Prefs, script: TypesetScript = 'zh'): string {
       user-select: text;
     }
     ${type}
+    ${listening ? listeningType(script, listen) : ''}
     ${emphasisCSS(script)}
     a { color: inherit; }
     pre, code {
@@ -292,15 +298,108 @@ function englishType(prefs: Prefs, stack: string, fg: string): string {
   `
 }
 
+/**
+ * Listening is glanced at, not read line by line. One short measure, larger
+ * type, no first-line indent, and a full breath between paragraphs. The page
+ * stays on the same paper and in the same font, so returning to reading is
+ * not a different book.
+ */
+export type ListenType = { size: number; leading: number }
+
+function listeningType(script: TypesetScript, listen: ListenType): string {
+  const size = Math.min(34, Math.max(18, Math.round(listen.size)))
+  const leading = Math.max(1.6, Math.min(2.6, Math.round(listen.leading * 100) / 100))
+  return `
+    body {
+      font-size: ${size}px !important;
+      line-height: ${leading} !important;
+      letter-spacing: ${script === 'en' ? '0.005em' : '0.015em'};
+    }
+    p, li, blockquote, dd {
+      line-height: ${leading} !important;
+      text-indent: 0 !important;
+      text-align: start !important;
+      margin: 0 auto 0.95em !important;
+      max-inline-size: 30em;
+    }
+    li { margin-bottom: 0.55em !important; }
+    blockquote { margin-left: auto !important; margin-right: auto !important; }
+    h1, h2, h3, h4 {
+      text-align: start !important;
+      margin: 1.4em auto 0.8em !important;
+      max-inline-size: 30em;
+    }
+    span.leaf-tr,
+    [data-leaf-tr] {
+      max-inline-size: 30em;
+      margin-left: auto !important;
+      margin-right: auto !important;
+      line-height: ${Math.max(1.75, leading - 0.25)} !important;
+    }
+  `
+}
+
 export function withFontFaces(css: string, fontFaces: string): string {
   return `${fontFaces}\n${css}`
 }
 
-export function readerCSS(prefs: Prefs, script: TypesetScript, fontFaces: string): string {
+/** The read-aloud mark tokens resolve out of the app stylesheet. */
+export type ReaderMarkColors = { line: string; word: string; blend: string }
+
+export function readerMarkColors(): ReaderMarkColors {
+  const read = (name: string): string => {
+    try {
+      return getComputedStyle(window.document.documentElement).getPropertyValue(name).trim()
+    } catch {
+      return ''
+    }
+  }
+  return {
+    line: read('--leaf-read-line'),
+    word: read('--leaf-read-word'),
+    blend: read('--leaf-read-blend') || 'multiply',
+  }
+}
+
+/**
+ * Dark papers invert the marker: multiply would vanish into the dark page, so
+ * the marks switch to screen with deep amber tones. Kept next to THEMES because
+ * dark paper is a reader concept — the app shell has no dark mode of its own.
+ */
+const DARK_PAPER_MARKS = {
+  line: '#5A4A00',
+  word: '#6E3A00',
+  blend: 'screen',
+}
+
+export function readerCSS(
+  prefs: Prefs,
+  script: TypesetScript,
+  fontFaces: string,
+  listening = false,
+  marks: ReaderMarkColors = readerMarkColors(),
+  listen: ListenType = { size: 26, leading: 2.05 },
+): string {
   const adapted = {
     ...prefs,
     font: fontForScript(prefs.font, script),
     theme: themeForScript(prefs.theme, script),
   }
-  return withFontFaces(bookCSS(adapted, script), fontFaces)
+  const theme = themeOf(adapted.theme)
+  const mark = theme.dark
+    ? { ...DARK_PAPER_MARKS }
+    : { ...marks, blend: marks.blend || 'multiply' }
+  const markVars =
+    `:root { --leaf-read-line: ${mark.line}; --leaf-read-word: ${mark.word}; --leaf-read-blend: ${mark.blend}; ` +
+    `--leaf-read-wash: ${withAlpha(theme.bg, 0.55)}; }`
+  return withFontFaces(`${markVars}\n${bookCSS(adapted, script, listening, listen)}`, fontFaces)
+}
+
+/** #RRGGBB plus alpha for overlay washes that must fade toward the paper. */
+export function withAlpha(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim())
+  if (!m) return hex
+  const channels = [m[1], m[2], m[3]].map((part) => Number.parseInt(part, 16))
+  const prefix = 'rgba'
+  return `${prefix}(${channels[0]}, ${channels[1]}, ${channels[2]}, ${alpha})`
 }

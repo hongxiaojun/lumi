@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { LibraryBook, Prefs, RelocateDetail, TranslatorConfig } from '../types'
+import type { LibraryBook, Prefs, RelocateDetail, TranslatorConfig, TtsConfig } from '../types'
 import type { Annotation } from '../lib/notes'
 import type { Bookmark } from '../lib/bookmarks'
 import { createBookmark, isCurrentBookmark } from '../lib/bookmarks'
+import { saveTtsPosition } from '../lib/db'
 import { clampFraction } from '../lib/format'
 import { resolveParallel } from '../lib/translate/lang'
 import { collectSearchYield, isBlankQuery, type SearchHit } from '../lib/searchHits'
@@ -10,6 +11,7 @@ import { subscribeOpenFrame } from '../lib/edgeChapter'
 import { clampSidebar, panelPlace, SIDEBAR_DEFAULT, sidebarAfterDrag, sidebarBand, type SidebarSide } from '../lib/readerSplit'
 import { themeForScript, themeOf } from '../lib/styles'
 import { menuShown, pageMenuPinned, pointerHoldsMenu } from '../lib/menuChrome'
+import { keyboardInset } from '../lib/keyboardInset'
 import type { FootLabel } from '../lib/pageFoot'
 import { FoliateHost, type ReaderApi } from './FoliateHost'
 import { BookMenu } from './BookMenu'
@@ -20,6 +22,9 @@ import { NotesPanel } from './NotesPanel'
 import { SearchPanel } from './SearchPanel'
 import { BookmarkPanel } from './BookmarkPanel'
 import { EngineSheet } from './EngineSheet'
+import { ListenBar } from './ListenBar'
+import { VoiceSheet } from './VoiceSheet'
+import { useReadAloud } from './useReadAloud'
 import type { UserFontChoice } from './UserFontsPanel'
 
 type Props = {
@@ -27,10 +32,12 @@ type Props = {
   prefs: Prefs
   userFonts: UserFontChoice[]
   translator: TranslatorConfig
+  tts: TtsConfig
   notes: Annotation[]
   bookmarks: Bookmark[]
   onPrefs: (prefs: Prefs) => void
   onTranslator: (config: TranslatorConfig) => void
+  onTts: (patch: Partial<TtsConfig>) => void
   onProgress: (patch: { cfi?: string | null; fraction?: number; parallel?: boolean }) => void
   onCreateAnnotation: (row: Annotation) => void
   onUpdateAnnotation: (row: Annotation) => void
@@ -38,13 +45,17 @@ type Props = {
   onToggleBookmark: (row: Bookmark) => void
   onDeleteBookmark: (id: string) => void
   onBack: () => void
+  autoListen?: boolean
+  listenResume?: { cfi?: string | null; fraction?: number } | null
+  onListenStarted?: () => void
 }
 
 export function Reader({
-  book, prefs, userFonts, translator, notes, bookmarks,
-  onPrefs, onTranslator, onProgress,
+  book, prefs, userFonts, translator, tts, notes, bookmarks,
+  onPrefs, onTranslator, onTts, onProgress,
   onCreateAnnotation, onUpdateAnnotation, onDeleteAnnotation,
   onToggleBookmark, onDeleteBookmark, onBack,
+  autoListen = false, listenResume = null, onListenStarted,
 }: Props) {
   const [atMenu, setAtMenu] = useState(false)
   const [atFoot, setAtFoot] = useState(false)
@@ -55,12 +66,22 @@ export function Reader({
   const [notesOpen, setNotesOpen] = useState(false)
   const [marksOpen, setMarksOpen] = useState(false)
   const [engineOpen, setEngineOpen] = useState(false)
+  const [voiceOpen, setVoiceOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [hits, setHits] = useState<SearchHit[]>([])
   const [searching, setSearching] = useState(false)
   const [capped, setCapped] = useState(false)
   const [loc, setLoc] = useState<RelocateDetail>({})
   const [nav, setNav] = useState<ReaderApi | null>(null)
+  const listen = useReadAloud({ nav, tts })
+  const startListening = listen.start
+  const listening = listen.active && tts.listenLayout
+  const listenStyle = useMemo(
+    () => (listening ? { size: tts.listenFontSize, leading: tts.listenLineHeight } : null),
+    [listening, tts.listenFontSize, tts.listenLineHeight],
+  )
+  const autoListenDone = useRef(false)
+  const quietProgressUntil = useRef(0)
   const [status, setStatusText] = useState<string | null>(null)
   const [statusTick, setStatusTick] = useState(0)
   const setStatus = useCallback((message: string | null) => {
@@ -72,17 +93,18 @@ export function Reader({
   const [showHint, setShowHint] = useState(true)
   const [sidebarWanted, setSidebarWanted] = useState(SIDEBAR_DEFAULT)
   const [viewport, setViewport] = useState(() => window.innerWidth)
+  const [kbInset, setKbInset] = useState(0)
   const readerRef = useRef<HTMLDivElement>(null)
   const dragOrigin = useRef<{ x: number; width: number } | null>(null)
   const theme = themeOf(themeForScript(prefs.theme, book.language === 'en' ? 'en' : 'zh'))
   const file = useMemo(() => book.file, [book.file])
   const parallel = resolveParallel(book)
   const readerPrefs = useMemo(() => ({ ...prefs, parallel }), [prefs, parallel])
-  const overlay = tocOpen || settingsOpen || notesOpen || engineOpen || searchOpen || marksOpen
+  const overlay = tocOpen || settingsOpen || notesOpen || engineOpen || searchOpen || marksOpen || voiceOpen
   const shown = menuShown({ pointer: atMenu, pinned, panel: overlay })
   const coarse = window.matchMedia('(hover: none)').matches
   const footShown = atFoot || (coarse && shown)
-  const sheet = settingsOpen || engineOpen
+  const sheet = settingsOpen || engineOpen || voiceOpen
   const overlayRef = useRef(false)
   const pinnedRef = useRef(false)
   const navRef = useRef(nav)
@@ -106,6 +128,19 @@ export function Reader({
     const observer = new ResizeObserver(measure)
     observer.observe(el)
     return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const view = window.visualViewport
+    if (!view) return
+    const measure = () => setKbInset(keyboardInset(window.innerHeight, view.height, view.offsetTop))
+    measure()
+    view.addEventListener('resize', measure)
+    view.addEventListener('scroll', measure)
+    return () => {
+      view.removeEventListener('resize', measure)
+      view.removeEventListener('scroll', measure)
+    }
   }, [])
 
   useEffect(() => {
@@ -213,6 +248,30 @@ export function Reader({
     return () => window.clearTimeout(timer)
   }, [pinned, overlay])
 
+  useEffect(() => {
+    if (!autoListen) {
+      autoListenDone.current = false
+      return
+    }
+    if (!nav || autoListenDone.current) return
+    if (loc.cfi == null && loc.fraction == null) return
+    autoListenDone.current = true
+    onListenStarted?.()
+    if (listenResume?.cfi || typeof listenResume?.fraction === 'number') {
+      quietProgressUntil.current = Date.now() + 6000
+      void (async () => {
+        if (listenResume.cfi) await nav.goTo(listenResume.cfi)
+        else await nav.goToFraction(listenResume.fraction ?? 0)
+        startListening(nav.currentRange())
+      })()
+      return
+    }
+    startListening(loc.range ?? null)
+  }, [
+    autoListen, nav, loc.cfi, loc.fraction, loc.range,
+    listenResume, onListenStarted, startListening,
+  ])
+
   const chapter = loc.tocItem?.label ?? ''
   const fraction = clampFraction(loc.fraction ?? book.fraction)
 
@@ -221,9 +280,28 @@ export function Reader({
     setSettingsOpen(false)
     setNotesOpen(false)
     setEngineOpen(false)
+    setVoiceOpen(false)
     setSearchOpen(false)
     setMarksOpen(false)
     nav?.clearSearch()
+  }
+
+  function stopListening() {
+    void saveTtsPosition(book.id, { cfi: loc.cfi, fraction: loc.fraction })
+    // iOS reflows the page after the bar closes; give that relocate room so it
+    // cannot write the spoken page into the reading position.
+    quietProgressUntil.current = Date.now() + 6000
+    listen.stop()
+  }
+
+  function toggleListen() {
+    if (listen.active) {
+      stopListening()
+      return
+    }
+    closePanels()
+    setPinned(false)
+    startListening(loc.range ?? null)
   }
 
   function showPanel(which: 'toc' | 'notes' | 'marks' | 'search' | 'settings') {
@@ -321,6 +399,7 @@ export function Reader({
         ['--reader-fg' as string]: theme.fg,
         ['--reader-muted' as string]: theme.muted,
         ['--sidebar' as string]: `${sidebarPx}px`,
+        ['--keyboard-inset' as string]: `${kbInset}px`,
       }}
     >
       {place === 'column' && side === 'left' && searchOpen && (
@@ -351,9 +430,12 @@ export function Reader({
         />
       )}
 
-      <div className={footShown ? 'reader-main foot' : 'reader-main'}>
+      <div className={['reader-main', footShown ? 'foot' : '', listen.active ? 'listening' : ''].filter(Boolean).join(' ')}>
         <FoliateHost
           file={file}
+          listening={listening}
+          listenStyle={listenStyle}
+          immersive={listening && tts.immersive}
           cfi={book.cfi}
           bookId={book.id}
           language={book.language}
@@ -375,6 +457,12 @@ export function Reader({
           }}
           onRelocate={(detail) => {
             setLoc(detail)
+            if (listen.active) {
+              void saveTtsPosition(book.id, { cfi: detail.cfi, fraction: detail.fraction })
+              listen.repaint()
+              return
+            }
+            if (Date.now() < quietProgressUntil.current) return
             onProgress({
               cfi: detail.cfi ?? null,
               fraction: detail.fraction ?? 0,
@@ -419,6 +507,15 @@ export function Reader({
           </div>
         )}
         {status && <div className="status-toast">{status}</div>}
+        {listen.active && !voiceOpen && (
+          <ListenBar
+            view={listen}
+            rate={tts.rate}
+            onRate={(rate) => onTts({ rate })}
+            onVoice={() => setVoiceOpen(true)}
+            onStop={stopListening}
+          />
+        )}
       </div>
 
       {place === 'column' && side === 'right' && notesOpen && (
@@ -470,6 +567,7 @@ export function Reader({
         notesOn={notesOpen}
         sizeOn={settingsOpen}
         searchOn={searchOpen}
+        listenOn={listen.active}
         onPointer={setAtMenu}
         onBack={onBack}
         onToc={() => showPanel('toc')}
@@ -477,6 +575,7 @@ export function Reader({
         onNotes={() => showPanel('notes')}
         onSize={() => showPanel('settings')}
         onSearch={() => showPanel('search')}
+        onListen={toggleListen}
         onMarkHere={toggleHere}
       />
       {settingsOpen && (
@@ -489,6 +588,10 @@ export function Reader({
           onEngine={() => {
             setSettingsOpen(false)
             setEngineOpen(true)
+          }}
+          onVoice={() => {
+            setSettingsOpen(false)
+            setVoiceOpen(true)
           }}
           onClose={() => setSettingsOpen(false)}
         />
@@ -532,6 +635,9 @@ export function Reader({
       )}
       {engineOpen && (
         <EngineSheet config={translator} onChange={onTranslator} onClose={() => setEngineOpen(false)} />
+      )}
+      {voiceOpen && (
+        <VoiceSheet config={tts} onChange={onTts} onClose={() => setVoiceOpen(false)} />
       )}
     </div>
   )

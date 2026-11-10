@@ -161,11 +161,14 @@ export async function seedSampleIfEmpty(existingCount: number): Promise<LibraryB
   if (existingCount > 0) return null
   if (localStorage.getItem('leaf:seeded')) return null
   localStorage.setItem('leaf:seeded', '1')
-  const res = await fetch('/samples/leaf-sample.epub')
-  if (!res.ok) return null
-  const blob = await res.blob()
-  const file = new File([blob], '叶读试读.epub', { type: 'application/epub+zip' })
-  const book = await importFile(file)
-  localStorage.setItem('leaf:seeded', '1')
-  return book
+  try {
+    const res = await fetch('/samples/leaf-sample.epub')
+    if (!res.ok) return null
+    const blob = await res.blob()
+    const file = new File([blob], '叶读试读.epub', { type: 'application/epub+zip' })
+    return await importFile(file)
+  } catch {
+    // The sample is optional. A packaged webview may not serve it.
+    return null
+  }
 }

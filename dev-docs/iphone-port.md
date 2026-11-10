@@ -206,11 +206,242 @@ Apple 的尺寸：手指点击区域至少 44×44 pt。Mac 上 28 pt 的按钮�
 壳和主路径已经在真机上过了一轮。下面这些还没按第 9 节逐项点完，继续时从这里接：
 
 - 真机上再走一遍第 9 节，把没过的项记下来，一次修一项。
-- 仿真翻页目前是页面绕书脊转动。若要更像纸张掀起，单独做，不顺手改滚动。
-- 横屏、动态字号、旁白还没测。
+- 仿真翻页已改成跟手滑动加页缘阴影，真正的纸张掀起要另做渲染层，当前不做。
+- 横屏已在模拟器上走过（2026-11-07，书架和阅读页都满宽）。动态字号、旁白还没测。
 - 7 天后续签只重复安装，不改容器。第一次过期时把结果补进第 2 节。
 
-## 12. 进度快照（2026-11-06）
+## 12. 进度快照
+
+### 2026-11-07 模拟器一轮（iOS 18.4）
+
+环境：iPhone 16 Pro 模拟器，402×874 pt（截图 1206×2622 px，3×），Xcode 27.2，bundle id `app.leaf.reader`。触摸由 `/tmp/lumi-uitest` 的 XCUITest 驱动。
+
+这一轮点过的：
+
+- 启动、四标签、书库封面和继续阅读卡。
+- 打开试读本：第 1/6 页；点页边翻到 2/6；左上角「返回」回书架。
+- 点正文开菜单，点「大小」开阅读设置；面板能滚动到「翻页」。字号从 20 拖到 23，正文重排；切到「滚动」后页脚变成 1/2 页，文字跟着手指上下走；再切回「仿真翻页」、字号回到 20，页脚回到 3/6 页。
+- 搜索框聚焦不放大页面；长按正文出现六色划线，划线菜单贴屏幕底部。
+- 选区拖长后仍能整段划线：此前只认长按选中的一两个词。选好颜色后应用会清掉系统选区，Apple 的 Copy / Look Up 菜单跟着收起。
+- 长按书库封面出现删除标记，点空白处收回。
+- 导入：主页「导入书籍」拉起系统文件选择；「浏览」→「我的iPhone」→「Lumi」→ `导入测试.epub` →「打开」。书出现在书库，封面可点开，正文渲染到 1/160 页。App 容器的 `.leaf-reader/library/catalog.json` 多了一条李笑来的书，试读本仍在。
+- 横屏：书架和阅读页都占满 1206 px 宽，阅读页走宽屏分支，排 4/6 页。用 `simctl io screenshot` 核对。
+
+横屏曾在 XCUITest 的 `app.screenshot()` 里只出现左侧约 400 pt，右侧全黑。同一时刻系统 `simctl io screenshot` 是满屏的，所以那是测试截图的限制，不是界面问题；横屏核对以系统截图为准。
+
+桌面路径：在 1280×900 的 Chromium（Vite 开发服务器）里打开书架和试读本。左侧书架索引、右侧藏书都在；点页边从 1/3 翻到 2/3，滚轮再翻到 3/3。`(max-width: 719px)` 和 `(hover: none)` 都不命中，笔记框和搜索框的计算字号仍是 13px / 14px，手机上的 16px 覆盖没有带到桌面。`pnpm exec tsc -b` 通过；`pnpm test` 549 通过、1 跳过。
+
+还没测：
+
+- 动态字号（系统字号放大）和旁白（VoiceOver）。
+- 这一轮没在真机上重装；签名和 7 天续签结果仍是旧记录。
+- 仿真翻页仍是绕书脊转动，不是纸张掀起。（同日后来改成跟手滑动，见下一节。）
+- 文件选择走的是「浏览 → 我的iPhone」；「最近项目」为空，iCloud 云盘路径没点。
+- 选区手柄的拖动没在 XCUITest 里抓住。长选区是在模拟器里用 Cmd+A 改选区验证的；拖动只改变选区、不发 touchend 的这条路径有 `readerDom.test.ts` 覆盖。
+- 系统 Copy / Look Up 菜单在长选区上可能压住「想法／译此段」两个按钮；六支笔在菜单上方，仍可点，点完颜色菜单收起。保留选区手柄就关不掉原生菜单，这条要等自绘选区。
+- 按第 9 节的规则，这一版仍写「视觉验收未完成」。
+
+### 2026-11-07 划线菜单换边
+
+问题：在屏幕上半部分选中文字时，划线菜单出现在选区上方，落到状态栏和灵动岛下面，按钮点不到。
+
+现在：
+
+- 菜单位置按阅读区内可点到的区域计算，顶部让开状态栏；阅读区的底边是页边距，不是可点边界，菜单可以用到底部安全区上方。
+- 手机上优先放在选区下方，把上方留给 iOS 自带的 Copy / Look Up 菜单；下方差一点放不下时夹到底边，差得多才翻到上方。桌面仍优先上方。
+- 选区在页面上半、下半都走这条规则；左右仍按选区中心夹在页边距内。
+
+模拟器（iPhone 16 Pro，iOS 18.4，XCUITest）：
+
+- 18% 高度长按标题：菜单在选区下方，黄 / 想法 / 译此段在 y=264 / 314，全部 hittable；点黄后标题左侧出现黄色划线。
+- 76% 高度长按正文：菜单在选区下方，黄 / 想法 / 译此段在 y=676 / 726，全部 hittable；原生菜单在选区上方，没有压住「想法 / 译此段」；点黄后「好」字划线。
+- Chromium 402×874：无安全区时桌面路径仍放选区上方；注入 59/34 的阅读区 inset 后，同一个上方选区换到下方。`placeSelectionBar` 的 23 项单测通过。
+
+还没测：
+
+- 真机。模拟器的安全区和原生菜单位置与真机可能有差异。
+- 选区横跨屏幕中部、贴近底边、横屏、动态字号、旁白。
+
+### 2026-11-07 翻页手势
+
+原来的左右拨动由两套动画同时接管：应用把整章 iframe 绕书脊转 3D，foliate 自己的触摸处理又在横向滚动同一章；松手时回到平面和翻页各启动一次，页内容与旋转互相追。现在只保留 foliate 的 1:1 横向跟手，松手按剩余距离做一次缓动；页缘阴影标出移动中的翻页缝，iframe 不再做 3D 变换。
+
+模拟器（iPhone 16 Pro，iOS 18.4，XCUITest `testSwipePageTurn`）：
+
+- 7/8 → 8/8：向左慢拨，松手后停在 8/8，只翻一页。
+- 8/8 → 7/8：向右慢拨，回到 7/8；再向左快拨回 8/8。
+- 录屏抽帧能看到页面随手指横向移动、页缘阴影跟着翻页缝。抽帧不证明 60 fps，真机手感仍未测。
+
+桌面：1280×900 Chromium 里点右页边 1/3→2/3、点左页边 2/3→1/3、滚轮 1/3→2/3；iframe 的 `transform` 为空，页缘阴影为 0。`pnpm exec tsc -b` 通过；`pnpm test` 549 通过、1 跳过；`pnpm lint` 0 error、9 warning。
+
+还没测：
+
+- 真机触摸的跟手延迟和惯性；模拟器不代替手感。
+- 短拨回弹、章末跨章、RTL、竖排文字。
+- 动态字号和旁白。
+
+### 2026-11-07 朗读（听书）
+
+第一版朗读。入口在窄屏底部的「朗读」标签和阅读菜单的「朗读」按钮：按句朗读，当前句在正文里高亮，句内随系统 boundary 事件按词加深；章读完自动接下一章，全书读完停在「全书读完了」。语音分系统（`speechSynthesis`，离线）和云端（OpenAI 兼容 `/audio/speech`，经 Tauri HTTP 插件发请求，绕开 CORS 和代理）两路；设置浮层里可切换、调语速（0.6–2.0）、选系统声音、填云端地址/密钥/模型/声音/语气，并有试听。朗读时可开「听书排版」：单栏、大字、宽行距。收听位置按书记在 IndexedDB，重开书从上次那句继续。
+
+核对（2026-11-07）：
+
+- 模拟器（iPhone 16 Pro，iOS 18.4，XCUITest）四个测试全过：
+  - `testListenFlow`（42.3 秒）：朗读标签 → 开始朗读 → 暂停/继续 → 语速切换 → 朗读设置浮层开/关 → 退出朗读。听书排版截图里当前句蓝色高亮、正在读的词青色、底栏显示「第 3 / 9 句」。
+  - `testListenKeepsProgress`（64.9 秒）：朗读几句后退出，重开书进度没丢；朗读标签记得读到的那句。
+  - `testCloudTts`（59.4 秒）：本机 mock 服务器（0.0.0.0:8765 返回 mp3）当云端，朗读设置里填地址和密钥后出声。
+  - `testCloudPreviewReason`（25.0 秒）：密钥错、限流、返回 JSON 这些失败路径，浮层里显示的是人话不是空白。
+- 桌面 Chromium：402×874 手机视口用假 utterance 走完系统语音全流程（开始、暂停继续、语速、浮层、退出、位置落库、重开续读）；1280×800 宽屏听书排版核对过；`listenLayout` 关掉后回到阅读排版、底栏仍在。
+- 门禁：`pnpm exec tsc -b` 通过；`pnpm test` 587 通过、1 跳过；`pnpm lint` 0 error、12 warning（新增 3 条在 `useReadAloud.ts` 的 ref 赋值和递归回调上）。
+
+还没测：
+
+- 真机：云端语音的 iOS 音频解锁（静音 wav 预热）、锁屏后是否继续读、后台音频都没验证；模拟器不代替真机。
+- 动态字号和旁白（VoiceOver）。
+- 云端语音只对着 mock 服务器测过，没打真实接口。
+- 长句拆分（220 字上限）和繁体、日文等语言的自动选声只在单测里覆盖。
+
+### 2026-11-07 真机装上朗读版
+
+安装序号 3232，手机已解锁，启动成功。解压嵌入资源能搜到 `朗读设置`、`全书读完了`、`听书排版`、`listen-bar`，装的是含朗读的这版。`UIBackgroundModes: audio` 在 project.yml 里，后台和锁屏的权限具备。
+
+走过的：
+
+- 启动后主页截图核对：四标签（主页、书库、搜索、朗读）在，书架两本书在，「继续阅读 1/6 页」在。
+- 门禁：`pnpm test` 598 通过、1 跳过；`tsc -b` 随 `pnpm build` 通过。
+
+云端语音路线定下：先零代码试听 OpenAI 兼容服务。朗读设置里的地址、密钥、模型、声音、语气都是自由文本，兼容服务（如硅基流动 `https://api.siliconflow.cn/v1` 配 CosyVoice2）直接填就能用。Azure 官方 SSML 分支和下一句预取都先不写，等试听结果和日常使用再说；edge-tts 不做正式方案。
+
+还没测：
+
+- 真机耳朵走查：静音键拨到静音是否出声、锁屏是否继续读、切后台是否继续读、暂停/继续/语速。
+- 朗读流程在真机上的视觉状态（只核对了主页，没驱动朗读界面）。
+- 云端对真实接口的试听（此前只对过 mock 服务器）。
+- 动态字号、旁白照旧未测。
+
+### 2026-11-08 断顿修复与记号笔高亮
+
+真机耳朵走查（硅基流动 CosyVoice2）发现：逐句现取云端音频，句间卡整个网络往返，短句多的章节断顿明显，底栏频繁闪「正在准备…」。修复：`SpeechPlayer` 把后两句交给语音引擎，`cloudSpeaker` 在播放当前句时预取它们进模块级缓存（按请求体做键，含文本/模型/声音/语速/语气；被拒的预取会删掉自己的缓存条目，重试重新发请求）。句间切换直接播缓存，请求数不变。章与章交界处仍有一句的加载，属可接受的最小实现。
+
+高亮同步改版：半透明覆盖（紫/品红）换成记号笔——句荧光黄 `#FFD43B`、词橙 `#FF922B`，不透明 + `mix-blend-mode: multiply`（Overlayer 原生支持），纸吃色、黑字保持黑；四种夜间纸（夜间/暖夜/墨黑/暮蓝）在 readerCSS 里换 `screen` + 深琥珀（`DARK_PAPER_MARKS`）。紫色弃用。
+
+门禁：`pnpm exec tsc -b` 通过；`pnpm test` 603 通过、1 跳过；`pnpm lint` 0 error。
+
+还没测：
+
+- 真机：预取后的句间是否真的无缝（短句连读是关键场景）、multiply 高亮在米色纸上的实际观感、夜间纸的 screen 高亮。
+- 静音键、锁屏、后台续读照旧未测。
+- 章与章交界的加载停顿仍在。
+
+### 2026-11-08 章交界预取
+
+上一轮的预取只覆盖章内：朗读到章末，换章仍要等一整个网络往返。现在朗读到本章倒数第二句时，去下一章偷看一次（`ReaderApi.listenPeek`：对下一节 `createDocument()`，跑和本章同一套切分管线，不动阅读视图），把下一章前两句送进语音缓存。新章的第一个 player 起播即命中缓存，章间不再有加载停顿。`listenPeek` 失败或没有下一章都静默落回老路（起播时现取）；system 语音不联网，整条预取跳过。
+
+每章只偷看一次的守卫和「倒数第二句触发」的判断在 `src/lib/tts/chapterPrefetch.ts`，缓存写入走 `cloud.ts` / `azure.ts` 各自的模块级缓存（键含完整请求体，失败的预取不毒化重试）。
+
+门禁：`pnpm exec tsc -b` 通过；`pnpm test` 611 通过、1 跳过；`pnpm lint` 0 error。
+
+### 2026-11-08 Azure 语音
+
+朗读新增第三个 provider：Azure 语音（REST 接入，按官方文档核对过契约）。POST SSML 到 `{region}.tts.speech.microsoft.com/cognitiveservices/v1`，`Ocp-Apim-Subscription-Key` 头带密钥，`X-Microsoft-OutputFormat: audio-24khz-48kbitrate-mono-mp3` 拿回 mp3 blob。不接 Speech SDK（维持 2026-11-07 的约束），复用整条管线：与云端共用同一个 iOS 解锁过的 audio 元素（`blobSpeaker` 从 cloud.ts 提炼）、按句缓存、章内与章交界预取、句内高亮全部直接可用。
+
+- 语速换算成 SSML `<prosody rate="+20%">`（0.6–2.0 映射为 −40%…+100%）。
+- 声音自由填神经声音短名（默认 zh-CN-XiaoxiaoNeural）；SSML 的语言从声音名前缀推导（zh-CN-XiaoxiaoNeural → zh-CN），推导不出回退 zh-CN。
+- 区域填名字（eastasia）或完整端点都行；`azureEndpoint` 统一拼出 `/cognitiveservices/v1`。
+- 缓存键 = 端点 + SSML（含文本/声音/语速），换区域自动重新取。
+- 错误映射对齐云端：401/403 → 密钥（提示也检查区域）、429 → 限流、JSON 响应 → 没有返回声音。
+- 朗读设置浮层三个 provider chip；`AzureFields`/`CloudFields` 拆到 `VoiceFields.tsx`（VoiceSheet 保持 ~300 行内）。手机朗读页的 provider 标签同步显示 `Azure · 声音名`。
+
+门禁：`pnpm exec tsc -b` 通过；`pnpm test` 627 通过、1 跳过；`pnpm lint` 0 error、12 warning（与此前持平）。
+
+还没测：
+
+- Azure 只对单测里的假 fetch 验证过，没打真实端点；真机试听（区域、密钥、声音名填对后的出声）待做。
+- 章交界预取的真机听感照旧待验证。
+
+### 2026-11-08 声音与模型改成下拉选择
+
+朗读设置里云端和 Azure 的模型 / 声音从自由填写升级为「下拉 + 手动填写回退」：
+
+- 云端：接口地址和密钥都填好后（字段失焦触发），自动 `GET {base}/models` 并过滤出 TTS 模型（启发式匹配 tts/speech/voice/cosy/fish/audio/moss 等；一个都匹配不到就显示全部，过滤只帮忙不设卡）。声音按服务出预设：硅基流动用文档常量的 CosyVoice2 八个系统音色（官方没有接口，自动拼 `模型:` 前缀）、api.openai.com 用固定音色表；其他兼容服务保留自由填写。
+- Azure：区域和密钥填好后自动 `GET /tts/cognitiveservices/voices/list`，中文名声音排前面。
+- 每个下拉都带「手动填写…」选项（硅基自定义上传音色、陌生服务的任意模型都从这里走）；拉取失败显示人话错误和「再试一次」，不打断输入。
+- 全部请求走 Tauri HTTP 插件（`appFetch`），避开 webview 的 CORS。
+
+逻辑在 `src/lib/tts/catalog.ts`（过滤、预设表、两个列表接口），UI 在 `VoiceFields.tsx` 的 `CatalogField`。
+
+门禁：`pnpm exec tsc -b` 通过；`pnpm test` 640 通过、1 跳过；`pnpm lint` 0 error、12 warning（持平）。
+
+还没测：真实端点的下拉拉取（硅基 /models 需要 key，Azure voices/list 需要 key+区域）只在单测的假 fetch 上验证过；真机待走查。
+
+### 2026-11-08 听书排版独立 + 沉浸式
+
+听书和阅读的排版参数解耦，朗读视觉升级为歌词式聚焦：
+
+- **排版独立**：听书字号（默认 26，18–34）和行距（默认 2.05，1.6–2.6）存进 `TtsConfig` 自己的记忆，`listeningType` 不再从阅读字号派生 —— 阅读改字号听书不再跟着动，反之亦然。朗读设置浮层的听书排版区新增字号/行距滑块（只在听书排版开着时出现）。
+- **沉浸式**（新开关，默认开）：朗读时其他段落模糊变淡（沿用既有 focusRead 的块级模糊），当前段内**非当前句**叠一层纸色蒙层（`listenWash.ts`，逐句 Overlayer 蒙层，无页级 blur —— 复用 marks 管线，每句只动变化的两个键）。当前句黄色记号笔 + 词橙色照常在最上层。与阅读设置的 focusRead 是「或」的关系，任一开启即生效。
+- 蒙层颜色按纸色注入 `--leaf-read-wash`（纸色 55% 透明度，normal 混合；夜间纸同样是暗纸色），字向纸色褪而不是盖黑。
+- 沉浸开关改动在下一句生效（几秒内）；排版滑块即时重排，不丢阅读位置（`scrollToAnchor` 回原位）。
+
+门禁：`pnpm exec tsc -b` 通过；`pnpm test` 647 通过、1 跳过；`pnpm lint` 0 error、12 warning（持平）。
+
+还没测：真机上沉浸式的实际观感（米色纸的蒙层浓度、夜间纸、翻页跟手时蒙层与页缘阴影叠加）、听书字号滑块的即时重排在真机的流畅度。
+
+### 2026-11-09 iPad 适配（宽屏 + 补齐入口）
+
+iPad 本来就能装同一个 bundle（`TARGETED_DEVICE_FAMILY = "1,2"`，`UISupportedInterfaceOrientations~ipad` 四个方向），缺的是宽屏下的入口：手机的窄屏四标签里有「搜索」和「朗读」，宽屏侧栏里这两个没有对应的位置。按「宽屏布局 + 补齐入口」补，不把 iPad 降级成窄屏。
+
+- **书架搜索**：宽屏标题栏下加一行 `.shelf-tools`（搜索框 + 朗读按钮）。判定逻辑抽到 `src/lib/shelfQuery.ts`：空查询（含纯空白）交给分类索引，标题走分类名；有查询时搜全库并接管标题为「搜索结果」，空结果换成「书架上没有这本书。」——和手机搜索页忽略分类开关的行为一致。
+- **朗读列表**：`PhoneShelf.tsx` 里的 `Listen` 抽成 `src/components/ListenShelf.tsx`，手机标签页和宽屏底部浮层共用一份，`heading` 决定是否自带 h1。
+- **触摸尺寸**：`@media (hover: none)` 下 `.btn`、`.shelf-switch`、`.shelf-index button` 抬到 44pt，`.icon-btn` 44×44，搜索框 44pt。
+- **脚本**：`install-iphone.sh` 接受设备类型参数，旧 iPad 的 40 位十六进制 UDID 也能匹配；`install-ipad.sh` 是它的薄封装。
+
+门禁：`pnpm exec tsc -b` 通过；`pnpm test` 653 通过、1 跳过（含 `shelfQuery` 的 6 条新用例）；`pnpm lint` 0 error、12 warning（持平）。
+
+模拟器（iPad Pro 11-inch M4，iOS 18.4）：release 构建通过；XCUITest `testWideShelfSearchAndListen` 通过（21.8s）。五张截图逐张看过：首屏（搜索行在标题栏下，与 `library-head` 不相交）、输入「叶读」（出现「清除」，标题变「搜索结果」）、清除后回到「我的藏书」、朗读浮层（底部升起、`panel-head` 带「完成」、卡片和「朗读设置」都在安全区内）、关闭后回到首屏。
+
+真机（iPad 9 代，iPad7,11）：签名成功（`** ARCHIVE SUCCEEDED **`），归档里 `assets/assets/index-*.js` 能搜到 `data-wide-shelf`、`搜索书名、作者或文件名`、`书架上没有这本书。`，证明装的是这版。首次 `devicectl install` 因锁屏失败（error 10003，DDI 挂不上），需解锁后重跑 `scripts/install-ipad.sh`（归档在 `/tmp/Lumi-ios.xcarchive`，不必重新编译）。
+
+设备族不会被 `xcodegen generate` 冲掉：`project.yml` 里没有 `TARGETED_DEVICE_FAMILY`，但 xcodegen 2.46 的 iOS 预设默认输出 `"1,2"`，用一个最小 spec 生成复现过。
+
+还没测：真机上的宽屏书架、搜索输入、朗读浮层互动；横屏和分屏（Slide Over）下的宽度切换；iPhone 窄屏四标签这一轮没有重新逐张核对（`PhoneShelf` 只是换成共用组件，路径未改，单测全绿）。
+
+### 2026-11-09 iPad 上 PDF 打不开（ReadableStream 缺异步迭代）
+
+现象：iPad 上导入任何 PDF 都停在「这本书打不开」。epub / mobi 正常。
+
+取证不靠复述界面：把 App 容器的 `Library/WebKit` 整棵拉回 Mac，用 `sqlite3` 读 `LocalStorage/localstorage.sqlite3`，`leaf:lastImportError` 里是 UTF-16LE 的三条 JSON，内容（去掉 NUL）为：
+
+```
+TypeError: undefined is not a function (near '...e of t...')
+  at getTextContent (assets/index-*.js)
+```
+
+顺着 dist 里同一份 bundle 的列号取上下文，落点是 pdf.js 的 `async getTextContent() { ... for await (const value of readableStream) ... }`。
+
+根因：WebKit 至今没给 `ReadableStream.prototype[Symbol.asyncIterator]`（桌面 Safari 也是 2026 年才补）。pdf.js 6 的 `getTextContent()` 用 `for await` 消费 `streamTextContent()` 的流，所以第一页就读不下去。与 upstream mozilla/pdf.js#21557 / #20973 一致，modern 和 legacy build 同样受影响。
+
+修法：`src/lib/pdf/polyfill.ts` 补一个异步迭代器——`next()` 转 `reader.read()`，`return()` 时 `reader.cancel()`，装到原型上之前先检查原生是否已有，有就不动。`extract.ts` 第一行 `import './polyfill'`，pdf.js 的模块体还没执行，补丁已经就位。选择补原型而不是改成 `getReader()` 手写循环：上游之后再修好，这里自动让位；业务代码不用知道 WebKit 的缺口。
+
+回归：`polyfill.test.ts` 5 条（顺序读完、提前 `break` 掉 `cancel`、删掉原型方法模拟 Safari、原生实现不被覆盖、import 即安装）；`extract.test.ts` 端到端一条——先删原型断言 `getTextContent` 抛错，再装补丁断言能读出 `Hello`。门禁：`tsc -b` 通过；`pnpm test` 664 通过、1 跳过；`pnpm lint` 0 error、12 warning（持平）。
+
+这一轮排查还顺带确认了三件事，都不改代码，但下次遇到「iOS 上某个 API 不存在」时能省一轮：
+
+1. **同包的 pdf.js 还用了两个 iOS 18.7 没有的 API，但都不在导入路径上。** `Map.prototype.getOrInsertComputed`（iOS 26.2 才补，只在渲染缓存和编辑器路径里出现）、`URL.parse`（只在给 pdf.js 传字符串 url 时走，本项目传的是 `data`，取不到分支）。所以修完流迭代器，导入链路就干净了，不必顺手补这两个。
+
+2. **worker 里那处 `for await` 不会炸。** `pdf.worker.min.mjs` 中 Brotli / Flate 图像的 `DecompressionStream` 也是用 `for await` 消费，但它外面包着 `try/catch`，失败会回落到同步解码路径。这也解释了为什么症状只出现在主线程的文本层：同一份代码在两个环境里的容错要求不同。
+
+3. **`xcodebuild archive` 不跑前端构建（这次白装了一版）。** 它不会执行 `tauri.conf.json` 的 `beforeBuildCommand`，`src-tauri/gen/apple/assets/` 里永远是上一次 `pnpm build` 的产物。改前端必须 `pnpm build` → `scripts/install-ipad.sh`，顺序反了就是「改了代码、包没变、现象没变」。核对办法：看归档里 `assets/index.html` 引用的 hash，再在那一份 `index-*.js` 里搜补丁特征串（这次是 `Symbol.asyncIterator`，计数 0 就是没进去）。
+
+真机复测见下一节。
+
+### 2026-11-10 iPad：财富的真相与硅基流动
+
+iPad 7（iPadOS 18.7.11）容器里的 `leaf:lastImportError` 仍是 2026-11-09 的 `getTextContent`：`TypeError: undefined is not a function (near '...e of t...')`，包是 `index-BQ-xGmcr.js`，异步迭代补丁没有装上去。本机用 pdf.js 跑过《财富的真相》：164 页、44842 字，分类是文字版，不是扫描件。补丁打进 `index-TKsIBWNK.js` 后归档安装，安装序号 1544。归档里能搜到 `Symbol.asyncIterator` 和 `<|endofprompt|>`。
+
+硅基流动：同一容器的朗读配置已是 `https://api.siliconflow.cn/v1`、`FunAudioLLM/CosyVoice2-0.5B` 和当时选的音色，密钥字段当时是空的。后一次只改声音会用旧配置整份覆盖，把刚粘上的密钥清掉。现在每次只提交改动的那一项，密钥在写入和发出前去掉 `Bearer`、引号和不可见空格。硅基不接受 OpenAI 的 `instructions` 字段，语气改写进 `<|endofprompt|>` 前面。密钥框不再用 `type=password`，避免 iPad 在失焦时把内容清空。密钥只留在设备上，不进仓库。用户确认这版可以重新导入《财富的真相》，云端试听也正常。
+
+### 2026-11-06 快照
 
 分支 `audiobook`，本地提交，没有推送。手机是 iPhone 17，bundle id `app.leaf.reader`。最近一次安装序号 3096，当时手机已解锁，进程启动成功。包里能解压到 `data-narrow-menu`。
 
@@ -222,10 +453,27 @@ Apple 的尺寸：手指点击区域至少 44×44 pt。Mac 上 28 pt 的按钮�
 - 仿真翻页和滚动。玻璃底栏。图标按 Mac 的绿猫头鹰铺到黑底。
 - 壳：场景清单、tao 0.35.3 的释放补丁、`custom-protocol`、个人团队签名。
 
+2026-11-06 这一轮修掉的：
+
+- 打开「我的字体」的那次抬手点击不再落到底层把它关掉。
+- 手机书架顶部显示解析进度和导入失败原因，不再只显示在宽屏隐藏区里。
+- 划线菜单按选中文字的位置计算，靠近屏幕边时上翻或左右夹住；六支笔的触控范围 44×44。
+- 返回、面板关闭、字体笔触和长按删除的触控范围补到 44×44。
+- 目录、搜索、书签、笔记和阅读设置的关闭按钮固定在浮层顶部，滚动后仍在；浮层顶边不再漏出上一行内容。
+- 底部浮层按 `--keyboard-inset` 上移和限高。
+
+这一轮的核对（402×874、触摸模拟，不是真机）：
+
+- 菜单关闭、菜单打开、阅读设置（含滚动到底）、目录（含滚动到底）、搜索输入、划线菜单、返回书架都点了。划线菜单在页内 {25, 53, 310, 110}，六支笔都是 44×44。
+- 320px 宽无横向溢出；1280×900 的侧栏、悬停菜单、笔记侧栏、设置浮层和目录浮层也复查过。
+- 键盘只在 Chromium 里改写 `visualViewport` 模拟过：`--keyboard-inset` 为 336px，搜索浮层底边从 874 移到 538，输入框在 443–487。
+
 还没完成：
 
-- 这一屏的状态名单没有在模拟器里走过。这台 Mac 没有 iPhone 模拟器运行时。真机上菜单关闭、菜单打开、目录、搜索、键盘这几张还没有逐张核对。视觉验收未完成。
-- 仿真翻页是绕书脊转动，不是纸张掀起。横屏、动态字号、旁白未测。
+- 这一屏的状态名单没有在模拟器里走过。这台 Mac 没有 iPhone 模拟器运行时。真机上菜单关闭、菜单打开、阅读设置、目录、搜索、键盘、划线这几张还没有逐张核对。视觉验收未完成。
+- 真机键盘、安全区和滚动惯性未测；键盘结论只来自模拟。
+- 这一轮重新打包并安装到 iPhone，序号 3112。解压嵌入资源能看到新的 `.panel-head` 规则。安装时手机锁屏，启动被系统拒绝，所以真机上的启动和状态仍未看。`scripts/install-iphone.sh` 原来从 `devicectl` 表格里取错列，现在按 UDID 取设备。
+- 仿真翻页是绕书脊转动，不是纸张掀起。横屏、动态字号、旁白当时未测（横屏已在 11-07 补上）。
 - 7 天描述文件还没过期，重签结果还没有记录。
 
 不在这次提交里：`public/favicon.svg`、`public/logo.svg`、`src-tauri/icons/` 里这次之前就改过的图标文件。那些留在工作区。
