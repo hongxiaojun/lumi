@@ -27,3 +27,17 @@ export function pageMenuPinned(input: {
 export function pointerHoldsMenu(pointerType: string): boolean {
   return pointerType !== 'touch'
 }
+
+/**
+ * A menu button runs on pointer-up. iOS often drops the click that follows a
+ * touch, and a click that arrives after the panel opens lands on the scrim
+ * and closes it. preventDefault stops that second click.
+ */
+export function menuPress(
+  event: { pointerType: string; button?: number; preventDefault: () => void },
+  run: () => void,
+): void {
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  event.preventDefault()
+  run()
+}

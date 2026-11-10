@@ -179,6 +179,9 @@ export function bookCSS(prefs: Prefs, script: TypesetScript = 'zh'): string {
       font-size: ${prefs.fontSize}px !important;
       font-weight: 400;
       letter-spacing: ${script === 'en' ? '0' : '0.02em'};
+      -webkit-touch-callout: none;
+      -webkit-user-select: text;
+      user-select: text;
     }
     ${type}
     ${emphasisCSS(script)}

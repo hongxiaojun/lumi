@@ -1,4 +1,7 @@
 //! M12-4: native application menu (Lumi / File / Edit / Window).
+//! Compiled for macOS only. rfd has no iOS file dialog.
+#![cfg(target_os = "macos")]
+
 use std::path::PathBuf;
 
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};

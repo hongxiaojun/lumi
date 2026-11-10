@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { menuShown, pageMenuPinned, pointerHoldsMenu } from './menuChrome'
+import { menuPress, menuShown, pageMenuPinned, pointerHoldsMenu } from './menuChrome'
 
 describe('menuShown', () => {
   it('stays hidden until the pointer, a pin, or an open panel asks for it', () => {
@@ -22,6 +22,22 @@ describe('pageMenuPinned', () => {
     expect(pageMenuPinned({ touch: true, panel: false, pinned: true })).toBe(false)
     expect(pageMenuPinned({ touch: true, panel: true, pinned: true })).toBe(false)
     expect(pageMenuPinned({ touch: true, panel: true, pinned: false })).toBe(false)
+  })
+})
+
+describe('menuPress', () => {
+  it('runs on finger-up and swallows the click that iOS sends afterwards', () => {
+    let ran = 0
+    const event = { pointerType: 'touch', button: 0, preventDefault: () => { ran += 10 } }
+    menuPress(event, () => { ran += 1 })
+    expect(ran).toBe(11)
+  })
+
+  it('runs a left click and ignores the other mouse buttons', () => {
+    let ran = 0
+    menuPress({ pointerType: 'mouse', button: 0, preventDefault: () => {} }, () => { ran += 1 })
+    menuPress({ pointerType: 'mouse', button: 2, preventDefault: () => {} }, () => { ran += 1 })
+    expect(ran).toBe(1)
   })
 })
 

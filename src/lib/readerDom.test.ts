@@ -46,4 +46,33 @@ describe('listenBookSelection', () => {
     expect(doc.querySelector('[data-leaf-menu]')).toBeNull()
     stop()
   })
+
+  it('opens the highlight bar when a finger lifts on a selection', async () => {
+    const paragraph = document.createElement('p')
+    paragraph.textContent = '黛玉便知是他'
+    const seen: string[] = []
+    const queued: FrameRequestCallback[] = []
+    const real = window.requestAnimationFrame.bind(window)
+    window.requestAnimationFrame = (fn) => {
+      queued.push(fn)
+      return queued.length
+    }
+    const stop = listenBookSelection(document, (info) => seen.push(info?.text ?? ''))
+    document.dispatchEvent(new Event('touchend'))
+    expect(queued).toHaveLength(1)
+    document.body.append(paragraph)
+    const live = document.createRange()
+    live.setStart(paragraph.firstChild!, 0)
+    live.setEnd(paragraph.firstChild!, 2)
+    document.getSelection()?.removeAllRanges()
+    document.getSelection()?.addRange(live)
+    queued[0](0)
+    window.requestAnimationFrame = real
+    expect(seen.at(-1)).toBe('黛玉')
+    document.getSelection()?.removeAllRanges()
+    document.dispatchEvent(new MouseEvent('mouseup'))
+    expect(seen.at(-1)).toBe('')
+    stop()
+    paragraph.remove()
+  })
 })

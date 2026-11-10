@@ -3,15 +3,14 @@ mod book_catalog;
 mod book_files;
 mod book_protocol;
 mod edge_open;
+#[cfg(target_os = "macos")]
 mod menu_bar;
 mod ocr;
 mod open_files;
 
-use edge_open::OpenChoice;
 use open_files::{register_opens_filtered, OpenFilesState};
 use std::path::PathBuf;
-use tauri::webview::NewWindowResponse;
-use tauri::{DragDropEvent, Emitter, Manager, RunEvent, WebviewEvent, WebviewWindowBuilder};
+use tauri::{DragDropEvent, Manager, RunEvent, WebviewEvent, WebviewWindowBuilder};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -62,33 +61,18 @@ pub fn run() {
                 .first()
                 .cloned()
                 .expect("main window");
-            let handle = app.handle().clone();
-            WebviewWindowBuilder::from_config(app.handle(), &window)?
-                .on_new_window(move |url, _features| {
-                    let raw = url.as_str().to_string();
-                    match edge_open::choose(&raw) {
-                        OpenChoice::Frame => {
-                            let _ = handle.emit("leaf-open-frame", raw);
-                        }
-                        OpenChoice::Link => {
-                            let app = handle.clone();
-                            std::thread::spawn(move || {
-                                if let Err(message) = edge_open::launch_edge(&raw) {
-                                    let _ = app.emit("leaf-open-frame-status", message);
-                                }
-                            });
-                        }
-                        OpenChoice::Deny => {}
-                    }
-                    NewWindowResponse::Deny
-                })
-                .build()?;
+            let mut builder = WebviewWindowBuilder::from_config(app.handle(), &window)?;
+            #[cfg(target_os = "macos")]
+            {
+                builder = attach_desktop_window(builder, app.handle().clone());
+            }
+            builder.build()?;
+            #[cfg(target_os = "macos")]
             menu_bar::install_menu(app.handle())?;
             let args: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
             register_opens_filtered(app.handle(), args);
             Ok(())
         })
-        .on_menu_event(|app, event| menu_bar::on_menu_event(app, event))
         .build(tauri::generate_context!())
         .expect("error while building Lumi")
         .run(|app, event| match event {
@@ -108,4 +92,37 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+/// Edge chapter handoff and the native menu exist only on the desktop shell.
+/// iOS has no menu bar; the shelf file input is the import path there.
+#[cfg(target_os = "macos")]
+fn attach_desktop_window<M: Manager<tauri::Wry>>(
+    builder: WebviewWindowBuilder<'_, tauri::Wry, M>,
+    handle: tauri::AppHandle,
+) -> WebviewWindowBuilder<'_, tauri::Wry, M> {
+    use edge_open::OpenChoice;
+    use tauri::webview::NewWindowResponse;
+    use tauri::Emitter;
+
+    builder
+        .on_new_window(move |url, _features| {
+            let raw = url.as_str().to_string();
+            match edge_open::choose(&raw) {
+                OpenChoice::Frame => {
+                    let _ = handle.emit("leaf-open-frame", raw);
+                }
+                OpenChoice::Link => {
+                    let app = handle.clone();
+                    std::thread::spawn(move || {
+                        if let Err(message) = edge_open::launch_edge(&raw) {
+                            let _ = app.emit("leaf-open-frame-status", message);
+                        }
+                    });
+                }
+                OpenChoice::Deny => {}
+            }
+            NewWindowResponse::Deny
+        })
+        .on_menu_event(|window, event| menu_bar::on_menu_event(window.app_handle(), event))
 }

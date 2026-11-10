@@ -238,6 +238,8 @@ class View {
             border: '0',
             display: 'none',
             width: '100%', height: '100%',
+            transformOrigin: 'left center',
+            background: 'inherit',
         })
         // `allow-scripts` is needed for events because of WebKit bug
         // https://bugs.webkit.org/show_bug.cgi?id=218086
@@ -1099,9 +1101,33 @@ export class Paginator extends HTMLElement {
         for (let index = this.#index + dir; this.#canGoToIndex(index); index += dir)
             if (this.sections[index]?.linear !== 'no') return index
     }
+    // A page turn lifts the sheet. Scroll mode leaves the page flat.
+    #curl(dir, progress) {
+        if (this.scrolled) return
+        const frame = this.#view?.element?.querySelector('iframe')
+        if (!frame) return
+        const amount = Math.max(0, Math.min(1, progress))
+        const sign = dir < 0 ? 1 : -1
+        frame.style.transformOrigin = dir < 0 ? 'right center' : 'left center'
+        frame.style.transform = amount === 0
+            ? ''
+            : `perspective(900px) rotateY(${sign * amount * 168}deg)`
+        frame.style.boxShadow = amount === 0
+            ? ''
+            : `${-sign * 18}px 0 28px rgba(60, 48, 32, ${0.18 * amount})`
+    }
     async #turnPage(dir, distance) {
         if (this.#locked) return
         this.#locked = true
+        if (!this.scrolled) {
+            const start = performance.now()
+            const run = now => {
+                const t = Math.min(1, (now - start) / 280)
+                this.#curl(dir, 1 - (1 - t) * (1 - t))
+                if (t < 1) requestAnimationFrame(run)
+            }
+            requestAnimationFrame(run)
+        }
         const prev = dir === -1
         const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
         if (shouldGo) await this.#goTo({
@@ -1109,6 +1135,7 @@ export class Paginator extends HTMLElement {
             anchor: prev ? () => 1 : () => 0,
         })
         if (shouldGo || !this.hasAttribute('animated')) await wait(100)
+        this.#curl(0, 0)
         this.#locked = false
     }
     prev(distance) {

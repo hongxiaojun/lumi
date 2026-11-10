@@ -7,7 +7,7 @@ import { clampFraction } from '../lib/format'
 import { resolveParallel } from '../lib/translate/lang'
 import { collectSearchYield, isBlankQuery, type SearchHit } from '../lib/searchHits'
 import { subscribeOpenFrame } from '../lib/edgeChapter'
-import { clampSidebar, SIDEBAR_DEFAULT, sidebarAfterDrag, sidebarBand, type SidebarSide } from '../lib/readerSplit'
+import { clampSidebar, panelPlace, SIDEBAR_DEFAULT, sidebarAfterDrag, sidebarBand, type SidebarSide } from '../lib/readerSplit'
 import { themeForScript, themeOf } from '../lib/styles'
 import { menuShown, pageMenuPinned, pointerHoldsMenu } from '../lib/menuChrome'
 import type { FootLabel } from '../lib/pageFoot'
@@ -89,7 +89,10 @@ export function Reader({
   overlayRef.current = overlay
   pinnedRef.current = pinned
   navRef.current = nav
-  const side: SidebarSide = notesOpen ? 'right' : (tocOpen || searchOpen || marksOpen) ? 'left' : 'none'
+  const place = panelPlace(viewport)
+  const side: SidebarSide = place === 'sheet'
+    ? 'none'
+    : notesOpen ? 'right' : (tocOpen || searchOpen || marksOpen) ? 'left' : 'none'
   const sidebarPx = clampSidebar(viewport, sidebarWanted, side)
   const band = sidebarBand(viewport)
   const hereCfi = loc.cfi ?? book.cfi
@@ -320,7 +323,7 @@ export function Reader({
         ['--sidebar' as string]: `${sidebarPx}px`,
       }}
     >
-      {side === 'left' && searchOpen && (
+      {place === 'column' && side === 'left' && searchOpen && (
         <SearchPanel
           hits={hits}
           searching={searching}
@@ -330,14 +333,14 @@ export function Reader({
           onClose={() => { setSearchOpen(false); nav?.clearSearch() }}
         />
       )}
-      {side === 'left' && tocOpen && (
+      {place === 'column' && side === 'left' && tocOpen && (
         <TocPanel
           items={nav?.toc ?? []}
           onJump={(href) => { nav?.goTo(href); closePanels() }}
           onClose={() => setTocOpen(false)}
         />
       )}
-      {side === 'left' && marksOpen && (
+      {place === 'column' && side === 'left' && marksOpen && (
         <BookmarkPanel
           marks={bookmarks}
           current={markedHere}
@@ -407,14 +410,18 @@ export function Reader({
         {showHint && !shown && (
           <div className="hint">
             {window.matchMedia('(hover: none)').matches
-              ? '点左右页边翻页 · 点页面显示菜单 · 点页面空白可收起 Safari 地址栏'
-              : '滚轮翻页 · 章末继续滚进入下一章 · 鼠标移到页面上沿显示菜单 · 点左右页边翻页'}
+              ? prefs.flow === 'scrolled'
+                ? '上下滑动阅读 · 点页面显示菜单 · 按住一段文字可以划线'
+                : '左右拨动翻页 · 点页面显示菜单 · 按住一段文字可以划线'
+              : prefs.flow === 'scrolled'
+                ? '滚动阅读 · 章末继续滚进入下一章 · 鼠标移到页面上沿显示菜单'
+                : '拨动或点页边翻页 · 鼠标移到页面上沿显示菜单'}
           </div>
         )}
         {status && <div className="status-toast">{status}</div>}
       </div>
 
-      {side === 'right' && notesOpen && (
+      {place === 'column' && side === 'right' && notesOpen && (
         <NotesPanel
           notes={notes}
           onJump={(cfi) => { nav?.goTo(cfi); setNotesOpen(false) }}
@@ -443,9 +450,17 @@ export function Reader({
         />
       )}
 
-      {sheet && (
+      {(sheet || (place === 'sheet' && side === 'none' && (tocOpen || searchOpen || marksOpen || notesOpen))) && (
         <div className="dim" onClick={() => closePanels()} />
       )}
+      <button
+        type="button"
+        className={shown ? 'reader-back covered' : 'reader-back'}
+        aria-label="返回书架"
+        onClick={onBack}
+      >
+        返回
+      </button>
       <BookMenu
         title={book.title}
         shown={shown}
@@ -476,6 +491,43 @@ export function Reader({
             setEngineOpen(true)
           }}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {place === 'sheet' && tocOpen && (
+        <TocPanel
+          items={nav?.toc ?? []}
+          onJump={(href) => { nav?.goTo(href); closePanels() }}
+          onClose={() => setTocOpen(false)}
+        />
+      )}
+      {place === 'sheet' && searchOpen && (
+        <SearchPanel
+          hits={hits}
+          searching={searching}
+          capped={capped}
+          onQuery={runSearch}
+          onJump={(cfi) => { nav?.goTo(cfi) }}
+          onClose={() => { setSearchOpen(false); nav?.clearSearch() }}
+        />
+      )}
+      {place === 'sheet' && marksOpen && (
+        <BookmarkPanel
+          marks={bookmarks}
+          current={markedHere}
+          onToggleHere={toggleHere}
+          onJump={(cfi) => { nav?.goTo(cfi); setMarksOpen(false) }}
+          onRemove={onDeleteBookmark}
+          onClose={() => setMarksOpen(false)}
+        />
+      )}
+      {place === 'sheet' && notesOpen && (
+        <NotesPanel
+          notes={notes}
+          onJump={(cfi) => { nav?.goTo(cfi); setNotesOpen(false) }}
+          onRemove={onDeleteAnnotation}
+          onChangeNote={(row, note) => onUpdateAnnotation({ ...row, note })}
+          onChangeColor={(row, color) => onUpdateAnnotation({ ...row, color })}
+          onClose={() => setNotesOpen(false)}
         />
       )}
       {engineOpen && (

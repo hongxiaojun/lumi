@@ -1,5 +1,5 @@
 import type { PointerEvent, ReactNode } from 'react'
-import { pointerHoldsMenu } from '../lib/menuChrome'
+import { menuPress, pointerHoldsMenu } from '../lib/menuChrome'
 
 type Props = {
   title: string
@@ -97,25 +97,29 @@ export function BookMenu({
     }
   }
 
+  function press(run: () => void) {
+    return (event: PointerEvent) => menuPress(event, run)
+  }
+
   return (
     <div
       className={shown ? 'book-menu-zone shown' : 'book-menu-zone'}
       onPointerEnter={hover(true)}
       onPointerLeave={hover(false)}
     >
-      <div className="book-menu" role="toolbar" aria-label="阅读菜单">
+      <div className="book-menu" role="toolbar" aria-label="阅读菜单" data-narrow-menu="wrap">
         <div className="book-menu-left">
-          <button type="button" className="book-menu-back" aria-label="返回" onClick={onBack}>
+          <button type="button" className="book-menu-back" aria-label="返回书架" onPointerUp={press(onBack)}>
             <BackIcon />
           </button>
           <div className="book-menu-pill">
-            <button type="button" aria-label="目录" aria-pressed={tocOn} onClick={onToc}>
+            <button type="button" aria-label="目录" aria-pressed={tocOn} onPointerUp={press(onToc)}>
               <TocIcon />
             </button>
-            <button type="button" aria-label="书签" aria-pressed={marksOn} onClick={onMarks}>
+            <button type="button" aria-label="书签" aria-pressed={marksOn} onPointerUp={press(onMarks)}>
               <BookmarkIcon />
             </button>
-            <button type="button" aria-label="笔记" aria-pressed={notesOn} onClick={onNotes}>
+            <button type="button" aria-label="笔记" aria-pressed={notesOn} onPointerUp={press(onNotes)}>
               <NotesIcon />
             </button>
           </div>
@@ -123,10 +127,10 @@ export function BookMenu({
         <div className="book-menu-title">{title}</div>
         <div className="book-menu-right">
           <div className="book-menu-pill">
-            <button type="button" className="book-menu-size" aria-pressed={sizeOn} onClick={onSize}>
+            <button type="button" className="book-menu-size" aria-pressed={sizeOn} onPointerUp={press(onSize)}>
               大小
             </button>
-            <button type="button" aria-label="搜索" aria-pressed={searchOn} onClick={onSearch}>
+            <button type="button" aria-label="搜索" aria-pressed={searchOn} onPointerUp={press(onSearch)}>
               <SearchIcon />
             </button>
           </div>
@@ -135,7 +139,7 @@ export function BookMenu({
             className="book-menu-mark"
             aria-label="此处书签"
             aria-pressed={marked}
-            onClick={onMarkHere}
+            onPointerUp={press(onMarkHere)}
           >
             <BookmarkIcon filled={marked} />
           </button>

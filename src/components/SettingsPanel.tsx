@@ -116,7 +116,7 @@ export function SettingsPanel({
             className={`chip ${prefs.flow === 'paginated' ? 'on' : ''}`}
             onClick={() => onChange({ ...prefs, flow: 'paginated' })}
           >
-            分页
+            仿真翻页
           </button>
           <button
             className={`chip ${prefs.flow === 'scrolled' ? 'on' : ''}`}

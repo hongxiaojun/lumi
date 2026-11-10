@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bindMarginTap, tapClaims, tapPlace } from './pageTap'
+import { bindMarginTap, pointOf, tapClaims, tapPlace } from './pageTap'
 
 function box(el: HTMLElement, x: number, y: number, width: number, height: number) {
   el.getBoundingClientRect = () => new DOMRect(x, y, width, height)
@@ -84,6 +84,17 @@ describe('tapPlace', () => {
   })
 })
 
+describe('pointOf', () => {
+  it('reads a finger from the touch, not from a mouse coordinate of zero', () => {
+    const ev = new Event('touchend')
+    Object.defineProperty(ev, 'changedTouches', { value: [{ clientX: 180, clientY: 400 }] })
+    Object.defineProperty(ev, 'touches', { value: [] })
+    Object.setPrototypeOf(ev, TouchEvent.prototype)
+    expect(pointOf(ev)).toEqual({ x: 180, y: 400 })
+    expect(pointOf(new MouseEvent('mouseup', { clientX: 12, clientY: 8 }))).toEqual({ x: 12, y: 8 })
+  })
+})
+
 describe('bindMarginTap', () => {
   it('turns on the blank side, opens tools on the page, and ignores a drag and a link', () => {
     const { page, frame } = stage([0, 0, 1200, 800], [260, 36, 680, 700], [260, 36, 680, 700])
@@ -100,9 +111,10 @@ describe('bindMarginTap', () => {
     gesture(page, 600, 200)
     gesture(page, 100, 200, 130, 200)
     gesture(link, 100, 200)
+    finger(page, 1100, 200)
     stop()
     gesture(page, 1100, 200)
-    expect(seen).toEqual(['left', 'chrome'])
+    expect(seen).toEqual(['left', 'chrome', 'right'])
     page.remove()
   })
 
@@ -126,4 +138,10 @@ function gesture(el: Element, x: number, y: number, x2 = x, y2 = y) {
   el.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true }))
   el.dispatchEvent(new PointerEvent('pointerup', { clientX: x2, clientY: y2, bubbles: true }))
   el.dispatchEvent(new MouseEvent('click', { clientX: x2, clientY: y2, bubbles: true }))
+}
+
+/** iOS WebKit often skips click after a touch that moved the page. */
+function finger(el: Element, x: number, y: number) {
+  el.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true, pointerType: 'touch' }))
+  el.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y, bubbles: true, pointerType: 'touch' }))
 }

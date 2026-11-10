@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { clampSidebar, nextSidebar, PAGE_MIN, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarAfterDrag } from './readerSplit'
+import { clampSidebar, nextSidebar, PAGE_MIN, panelPlace, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarAfterDrag } from './readerSplit'
+
+describe('panelPlace', () => {
+  it('keeps a sidebar only when the page still has its minimum', () => {
+    expect(panelPlace(PAGE_MIN + SIDEBAR_MIN)).toBe('column')
+    expect(panelPlace(PAGE_MIN + SIDEBAR_MIN - 1)).toBe('sheet')
+    expect(panelPlace(390)).toBe('sheet')
+  })
+})
 
 describe('reader sidebar split', () => {
   it('keeps a full page when no sidebar is open', () => {

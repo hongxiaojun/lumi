@@ -5,7 +5,8 @@ import type { FlowId, Prefs, RelocateDetail, TocItem, TranslatorConfig } from '.
 import type { Annotation, NoteColor } from '../lib/notes'
 import type { ScriptKind } from '../lib/translate/lang'
 import { colorHex, createAnnotation } from '../lib/notes'
-import { bindMarginTap, tapClaims, tapPage, tapPlace } from '../lib/pageTap'
+import { bindMarginTap, pointOf, tapClaims, tapPage, tapPlace } from '../lib/pageTap'
+import { curlDrag, touchFollows } from '../lib/pageCurl'
 import { readerCSS } from '../lib/styles'
 import { mountUserFonts } from '../lib/userFonts'
 import { loadFontFaces } from '../lib/fonts'
@@ -102,6 +103,7 @@ function applyLayout(view: FoliateViewEl, flow: FlowId, css: string, width: numb
   if (!r) return
   const columns = spreadColumns(width, height, flow)
   r.setAttribute('flow', flow)
+  r.setAttribute('animated', '')
   r.setAttribute('max-column-count', String(columns))
   r.setAttribute('max-inline-size', `${SPREAD_PAGE_PX}px`)
   r.setAttribute('gap', '8%')
@@ -417,15 +419,77 @@ export function FoliateHost({
       void appendAhead(sectionIndex ?? 0, ticket)
       pageFrame = doc.defaultView?.frameElement instanceof Element ? doc.defaultView.frameElement : null
       const gate = bookClickGate()
-      const onDown = (ev: MouseEvent) => { gate.down(pending.current != null, ev.clientX, ev.clientY) }
-      const onUp = (ev: MouseEvent) => { gate.up(doc.getSelection()?.toString() ?? '', ev.clientX, ev.clientY) }
+      let finger = false
+      let touchX = 0
+      let touchY = 0
+      const frameOf = () => doc.defaultView?.frameElement
+      const paintCurl = (dir: number, progress: number) => {
+        const frame = frameOf()
+        if (!(frame instanceof HTMLElement)) return
+        const amount = Math.max(0, Math.min(1, progress))
+        const sign = dir < 0 ? 1 : -1
+        frame.style.transformOrigin = dir < 0 ? 'right center' : 'left center'
+        frame.style.transition = 'none'
+        frame.style.transform = amount === 0 ? '' : `perspective(900px) rotateY(${sign * amount * 168}deg)`
+        frame.style.boxShadow = amount === 0 ? '' : `${-sign * 18}px 0 28px rgba(60, 48, 32, ${0.18 * amount})`
+      }
+      const clearCurl = () => {
+        const frame = frameOf()
+        if (!(frame instanceof HTMLElement)) return
+        frame.style.transition = 'transform 180ms ease, box-shadow 180ms ease'
+        frame.style.transform = ''
+        frame.style.boxShadow = ''
+      }
+      const onDown = (ev: Event) => {
+        finger = ev.type === 'touchstart'
+        const point = pointOf(ev)
+        touchX = point?.x ?? 0
+        touchY = point?.y ?? 0
+        gate.down(pending.current != null, touchX, touchY)
+      }
+      const onMove = (ev: Event) => {
+        if (!finger || prefsRef.current.flow === 'scrolled') return
+        const point = pointOf(ev)
+        if (!point) return
+        const drag = curlDrag(touchX, point.x, doc.documentElement.clientWidth || 1)
+        if (drag.side === 'stay') return
+        paintCurl(drag.side === 'left' ? -1 : 1, drag.progress)
+      }
+      const onUp = (ev: Event) => {
+        const point = pointOf(ev)
+        gate.up(doc.getSelection()?.toString() ?? '', point?.x ?? 0, point?.y ?? 0)
+      }
       const onClick = (ev: MouseEvent) => {
-        if (tapClaims(ev.target) || ev.defaultPrevented) return
+        // The matching touchend already ran the tap. A late click would turn twice.
+        if (finger || tapClaims(ev.target) || ev.defaultPrevented) return
+        runTap(ev.clientX)
+      }
+      const onTouchEnd = (ev: Event) => {
+        const point = pointOf(ev)
+        if (!point || tapClaims(ev.target)) return
+        gate.up(doc.getSelection()?.toString() ?? '', point.x, point.y)
+        const follow = touchFollows(
+          prefsRef.current.flow,
+          Math.hypot(point.x - touchX, point.y - touchY),
+        )
+        if (follow === 'scroll') return
+        if (follow === 'curl') {
+          const drag = curlDrag(touchX, point.x, doc.documentElement.clientWidth || 1)
+          clearCurl()
+          if (drag.progress > 0.28) {
+            if (drag.side === 'left') void view.goLeft()
+            else if (drag.side === 'right') void view.goRight()
+          }
+          return
+        }
+        runTap(point.x)
+      }
+      const runTap = (clientX: number) => {
         const article = host.querySelector(':scope > article.read-aloud')
         const speaking = article instanceof HTMLElement && article.dataset.leafSpeaking === '1'
         const frame = doc.defaultView?.frameElement
         const place = frame instanceof Element
-          ? tapPlace(frame.getBoundingClientRect().left + ev.clientX, frame, tapPage(frame))
+          ? tapPlace(frame.getBoundingClientRect().left + clientX, frame, tapPage(frame))
           : 'text'
         const action = gate.click(
           speaking,
@@ -438,12 +502,18 @@ export function FoliateHost({
         else window.dispatchEvent(new Event('leaf:toggle-chrome'))
       }
       doc.addEventListener('mousedown', onDown)
+      doc.addEventListener('touchstart', onDown)
+      doc.addEventListener('touchmove', onMove)
       doc.addEventListener('mouseup', onUp)
       doc.addEventListener('click', onClick)
+      doc.addEventListener('touchend', onTouchEnd)
       loadDetachers.push(() => {
         doc.removeEventListener('mousedown', onDown)
+        doc.removeEventListener('touchstart', onDown)
+        doc.removeEventListener('touchmove', onMove)
         doc.removeEventListener('mouseup', onUp)
         doc.removeEventListener('click', onClick)
+        doc.removeEventListener('touchend', onTouchEnd)
       })
       doc.addEventListener('keydown', (ev) => {
         if (ev.key === 'ArrowLeft' || ev.key === 'PageUp') {

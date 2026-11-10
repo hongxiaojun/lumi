@@ -14,7 +14,7 @@ export function SelectionBar({ top, left, onHighlight, onNote, onTranslate }: Pr
     <div
       className="sel-bar"
       style={{ top, left }}
-      onMouseDown={(e) => e.preventDefault()}
+      onPointerDown={(e) => e.preventDefault()}
     >
       <div className="sel-pens">
         {NOTE_COLORS.map((pen) => (

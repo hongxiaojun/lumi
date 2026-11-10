@@ -277,12 +277,172 @@ button:disabled {
   letter-spacing: 0.12em;
 }
 
+.phone-shelf {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  margin: calc(-1 * max(16px, env(safe-area-inset-top))) -14px calc(-1 * (28px + env(safe-area-inset-bottom)));
+}
+.phone-page {
+  flex: 1;
+  overflow: auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom));
+}
+.phone-page h1 {
+  margin: 4px 0 16px;
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 600;
+}
+.phone-page h2 {
+  margin: 22px 0 10px;
+  font-size: 16px;
+}
+.phone-actions,
+.phone-sections {
+  display: flex;
+  gap: 8px;
+}
+.phone-actions .btn,
+.phone-sections button,
+.phone-tabs button {
+  min-height: 44px;
+}
+.phone-sections {
+  margin: 0 0 16px;
+}
+.phone-sections button {
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+}
+.phone-sections button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: none;
+}
+.phone-file { display: none; }
+.phone-quiet {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.phone-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(148px, 70%);
+  gap: 10px;
+  overflow-x: auto;
+}
+.phone-chip,
+.phone-search li button,
+.phone-brief li button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+.phone-chip strong,
+.phone-search strong,
+.phone-brief strong {
+  font-size: 15px;
+  line-height: 1.35;
+}
+.phone-chip span,
+.phone-search span,
+.phone-brief span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.phone-search ul,
+.phone-brief ul {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.phone-search .text-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.phone-tabs {
+  position: fixed;
+  z-index: 5;
+  left: 16px;
+  right: 16px;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  padding: 4px;
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--card) 38%, transparent);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  border: 1px solid color-mix(in srgb, var(--card) 72%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--card) 86%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--fg) 8%, transparent),
+    0 12px 32px color-mix(in srgb, var(--fg) 12%, transparent);
+}
+.phone-tabs::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 62%, transparent),
+    transparent 46%
+  );
+}
+.phone-tabs button {
+  position: relative;
+  z-index: 1;
+  min-height: 44px;
+  border-radius: 22px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.phone-tabs button[aria-current="page"] {
+  background: color-mix(in srgb, var(--card) 74%, transparent);
+  color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--card) 92%, transparent),
+    0 1px 2px color-mix(in srgb, var(--fg) 8%, transparent);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .phone-tabs {
+    background: color-mix(in srgb, var(--card) 94%, var(--bg));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 @media (max-width: 719px) {
   .library {
-    grid-template-columns: 1fr;
-    row-gap: 12px;
+    display: block;
     padding: max(16px, env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom));
   }
+  .library-main[hidden] { display: none; }
   .shelf-index {
     position: static;
     flex-direction: row;
@@ -473,8 +633,11 @@ button:disabled {
   bottom: 0;
   transform: translateX(-50%);
   width: min(560px, 100%);
+  max-height: min(78dvh, 640px);
+  overflow: auto;
   border-radius: 8px 8px 0 0;
-  padding: 18px 22px 28px;
+  padding: 18px 22px calc(28px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
 }
 .drawer {
   top: 0; bottom: 0; left: 0;
@@ -482,6 +645,28 @@ button:disabled {
   padding: 20px 8px 20px 18px;
   overflow: auto;
   box-shadow: 8px 0 32px rgba(0,0,0,.12);
+}
+@media (max-width: 539px) {
+  .reader > .drawer,
+  .reader > .drawer.drawer-right {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 7;
+    width: 100%;
+    height: auto;
+    max-height: min(72dvh, 640px);
+    padding: max(16px, env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12);
+  }
+  .reader > .drawer .toc-item,
+  .reader > .drawer .search-hit,
+  .reader > .drawer .icon-btn {
+    min-height: 44px;
+  }
+  .reader > .drawer .text-input { height: 44px; font-size: 16px; }
 }
 .drawer h3, .sheet h3 {
   margin: 0 0 14px;
@@ -513,11 +698,11 @@ button:disabled {
 }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
-  height: 32px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 14px;
   border-radius: 16px;
   border: 1px solid color-mix(in srgb, var(--reader-fg) 16%, transparent);
-  font-size: 13px;
+  font-size: 15px;
 }
 .chip.on {
   background: var(--reader-fg);
@@ -614,6 +799,8 @@ button:disabled {
   font-size: 14px;
 }
 .font-actions { display: flex; gap: 10px; }
+.font-panel .btn,
+.font-actions .btn { min-height: 44px; }
 .font-panel button:disabled,
 .head-actions button:disabled {
   cursor: default;

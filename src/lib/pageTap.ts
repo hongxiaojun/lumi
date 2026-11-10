@@ -65,6 +65,17 @@ export function tapClaims(target: EventTarget | null): boolean {
   return target instanceof Element && !!target.closest('a[href]')
 }
 
+/** A touch point lives on changedTouches. Reading it as a mouse puts the finger at 0. */
+export function pointOf(ev: Event): { x: number; y: number } | null {
+  if (typeof TouchEvent !== 'undefined' && ev instanceof TouchEvent) {
+    const touch = ev.changedTouches[0] ?? ev.touches[0]
+    if (!touch) return null
+    return { x: touch.clientX, y: touch.clientY }
+  }
+  if (ev instanceof MouseEvent) return { x: ev.clientX, y: ev.clientY }
+  return null
+}
+
 // Clicks on the blank margin never enter the chapter iframe. The text column
 // is handled separately, with the selection gate.
 export function bindMarginTap(page: Element, read: {
@@ -75,23 +86,31 @@ export function bindMarginTap(page: Element, read: {
   let x = 0
   let y = 0
   let moved = false
+  let touch = false
   const down = (ev: Event) => {
     const point = ev as PointerEvent
     x = point.clientX
     y = point.clientY
     moved = false
+    touch = point.pointerType === 'touch'
+  }
+  const act = (clientX: number, target: EventTarget | null) => {
+    if (moved || tapClaims(target)) return
+    const frame = read.frame()
+    if (!frame) return
+    const place = tapPlace(clientX, frame, page)
+    if (place === 'left' || place === 'right') read.turn(place)
+    else read.chrome()
   }
   const up = (ev: Event) => {
     const point = ev as PointerEvent
     moved = Math.hypot(point.clientX - x, point.clientY - y) > TAP_SLOP
+    // A finger on iOS often never produces click after the page moves.
+    if (touch) act(point.clientX, ev.target)
   }
   const click = (ev: Event) => {
-    if (moved || tapClaims(ev.target)) return
-    const frame = read.frame()
-    if (!frame) return
-    const place = tapPlace((ev as MouseEvent).clientX, frame, page)
-    if (place === 'left' || place === 'right') read.turn(place)
-    else read.chrome()
+    if (touch) return
+    act((ev as MouseEvent).clientX, ev.target)
   }
   page.addEventListener('pointerdown', down)
   page.addEventListener('pointerup', up)

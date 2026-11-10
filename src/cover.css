@@ -110,20 +110,17 @@
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 22px;
-  height: 22px;
-  border-radius: 11px;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
   background: rgba(0, 0, 0, 0.45);
   color: #fff;
-  font-size: 13px;
+  font-size: 16px;
   opacity: 0;
 }
 .cover-shelf .book:hover .book-remove,
-.cover-shelf .book:focus-within .book-remove { opacity: 1; }
-
-@media (hover: none) {
-  .cover-shelf .book-remove { opacity: 0.92; }
-}
+.cover-shelf .book.held .book-remove { opacity: 1; }
+.cover-shelf .book-remove:focus-visible { opacity: 1; }
 
 @media (max-width: 719px) {
   .cover-shelf .grid {

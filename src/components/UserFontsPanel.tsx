@@ -37,7 +37,7 @@ export function UserFontsPanel({
       >
         <h3 id="user-font-title">我的字体</h3>
         <p className="font-hint">
-          字体文件只留在这台 Mac 的 Lumi 里，不会放进安装包。用于全部书会换掉每本书的字体，字号和纸色不动。
+          字体文件只留在这台设备的 Lumi 里，不会放进安装包。用于全部书会换掉每本书的字体，字号和纸色不动。
         </p>
         {notice ? (
           <p className="font-notice" role="alert">

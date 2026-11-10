@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import type { LibraryBook } from '../types'
 import { shelfMarks } from '../lib/format'
 import { parseCaption, parseFractionOf } from '../lib/parseGate'
@@ -74,6 +75,16 @@ export function CoverShelf({
   onOpen,
   onRemove,
 }: Props) {
+  const [held, setHeld] = useState<string | null>(null)
+  const timer = useRef<number | null>(null)
+  function hold(id: string) {
+    if (timer.current) window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setHeld(id), 450)
+  }
+  function release() {
+    if (timer.current) window.clearTimeout(timer.current)
+    timer.current = null
+  }
   const recent = latestOpened(books)
   const recentMarks = recent ? shelfMarks(recent) : null
   const recentParsing = recent ? parseFractionOf(parseGates, recent.id) : null
@@ -108,14 +119,20 @@ export function CoverShelf({
         {books.map((book) => {
           const parsing = parseFractionOf(parseGates, book.id)
           return (
-          <article className="book" key={book.id}>
+          <article className={held === book.id ? 'book held' : 'book'} key={book.id}>
             <button
               className="book-open"
               type="button"
               disabled={parsing !== null}
               aria-label={parsing !== null ? `${book.title}，${parseCaption(parsing)}，完成后才能打开` : undefined}
+              onPointerDown={() => {
+                if (parsing === null) hold(book.id)
+              }}
+              onPointerUp={release}
+              onPointerLeave={release}
+              onPointerCancel={release}
               onClick={() => {
-                if (parsing === null) onOpen(book.id)
+                if (parsing === null && held !== book.id) onOpen(book.id)
               }}
             >
               <Cover book={book} parsing={parsing} />
@@ -126,6 +143,7 @@ export function CoverShelf({
             <button
               className="book-remove"
               type="button"
+              tabIndex={held === book.id ? 0 : -1}
               title={removeLabel}
               aria-label={`${removeLabel} ${book.title}`}
               disabled={parsing !== null}

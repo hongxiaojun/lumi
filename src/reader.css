@@ -144,9 +144,9 @@
 }
 .sel-pens { display: flex; gap: 6px; justify-content: center; }
 .sel-pen {
-  width: 18px;
-  height: 18px;
-  border-radius: 9px;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.35);
 }
 .sel-actions {
@@ -156,8 +156,9 @@
 }
 .sel-actions button {
   color: #fff;
-  padding: 4px 10px;
-  font-size: 13px;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 15px;
 }
 .bookmark-row {
   display: flex;
@@ -396,13 +397,36 @@ foliate-view::part(foot) {
   .chrome-row { flex-wrap: wrap; }
 }
 /* Same paper as the page. The strip is only a hit target until the pointer arrives. */
+.reader-back {
+  display: none;
+}
+@media (hover: none) {
+  .reader-back {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    z-index: 6;
+    top: max(8px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--reader-bg) 88%, transparent);
+    color: var(--reader-fg);
+    font-size: 15px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  }
+  .reader-back.covered { display: none; }
+}
 .book-menu-zone {
   position: absolute;
-  z-index: 5;
+  z-index: 4;
   top: 0;
   left: 0;
   right: 0;
   height: 36px;
+  padding-top: env(safe-area-inset-top);
 }
 .reader.split-left .book-menu-zone { left: var(--sidebar); }
 .reader.split-right .book-menu-zone { right: var(--sidebar); }
@@ -429,6 +453,22 @@ foliate-view::part(foot) {
 .book-menu-zone:focus-within .book-menu { opacity: 1; }
 @media (hover: none) {
   .book-menu-zone:not(.shown):not(:focus-within) { pointer-events: none; }
+  .book-menu-zone.shown {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+  .book-menu {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 0;
+    background: transparent;
+  }
+  .book-menu-title { display: none; }
+  .book-menu-left,
+  .book-menu-right { gap: 6px; }
+  .book-menu-back { width: 44px; opacity: 1; }
 }
 .book-menu-title {
   flex: 1 1 auto;
@@ -452,7 +492,7 @@ foliate-view::part(foot) {
 .book-menu-pill {
   display: flex;
   align-items: center;
-  height: 32px;
+  min-height: 44px;
   padding: 0 3px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--reader-fg) 5%, var(--reader-bg));
@@ -462,8 +502,8 @@ foliate-view::part(foot) {
 .book-menu-back {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   color: var(--reader-fg);
 }

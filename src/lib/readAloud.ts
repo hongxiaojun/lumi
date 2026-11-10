@@ -636,6 +636,8 @@ export function bindReadAloud(
   }
   doc.addEventListener('mousedown', hold)
   doc.addEventListener('mouseup', release)
+  doc.addEventListener('touchstart', hold)
+  doc.addEventListener('touchend', release)
   const paintMark = (mark: ReadAloudMark | null, follow: boolean, force = false) => {
     // A block before this chapter belongs to text we kept so Edge can finish
     // the previous page. Leave that mark alone.
@@ -725,6 +727,8 @@ export function bindReadAloud(
     stopWatch()
     doc.removeEventListener('mousedown', hold)
     doc.removeEventListener('mouseup', release)
+    doc.removeEventListener('touchstart', hold)
+    doc.removeEventListener('touchend', release)
     paintReadFocus(sources, null)
   }) as ReadAloudStop
   stop.replay = replay

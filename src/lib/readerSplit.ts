@@ -3,6 +3,13 @@ export const SIDEBAR_MIN = 220
 export const PAGE_MIN = 320
 
 export type SidebarSide = 'none' | 'left' | 'right'
+export type PanelPlace = 'column' | 'sheet'
+
+/** A sidebar beside the page only fits when both keep their minimum. */
+export function panelPlace(viewport: number): PanelPlace {
+  if (viewport >= PAGE_MIN + SIDEBAR_MIN) return 'column'
+  return 'sheet'
+}
 
 /** Visible sidebar range for this window. The page keeps at least PAGE_MIN. */
 export function sidebarBand(viewport: number): { min: number; max: number } {

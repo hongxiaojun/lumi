@@ -38,16 +38,26 @@ export function listenBookSelection(
   onSelect: (info: { range: Range; text: string } | null) => void,
 ): () => void {
   const onUp = () => {
-    const sel = doc.getSelection()
-    if (!sel || sel.isCollapsed || !sel.rangeCount) {
-      onSelect(null)
-      return
+    const read = () => {
+      const sel = doc.getSelection()
+      if (!sel || sel.isCollapsed || !sel.rangeCount) {
+        onSelect(null)
+        return
+      }
+      const clipped = clipRangeToContent(sel.getRangeAt(0).cloneRange())
+      onSelect(clipped)
     }
-    const clipped = clipRangeToContent(sel.getRangeAt(0).cloneRange())
-    onSelect(clipped)
+    read()
+    // iOS commits the selection after touchend. One more frame catches it.
+    const schedule = doc.defaultView?.requestAnimationFrame?.bind(doc.defaultView)
+    if (schedule) schedule(read)
   }
   doc.addEventListener('mouseup', onUp)
-  return () => doc.removeEventListener('mouseup', onUp)
+  doc.addEventListener('touchend', onUp)
+  return () => {
+    doc.removeEventListener('mouseup', onUp)
+    doc.removeEventListener('touchend', onUp)
+  }
 }
 
 function cssEscape(value: string): string {

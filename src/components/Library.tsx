@@ -16,6 +16,7 @@ import {
 } from '../lib/shelfIndex'
 import { browserShelfStorage, readShelfView, writeShelfView, type ShelfView } from '../lib/shelfView'
 import { CoverShelf } from './CoverShelf'
+import { PhoneShelf } from './PhoneShelf'
 import { ShelfIndex } from './ShelfIndex'
 import { LeafLogo } from './LeafLogo'
 import { ParseBar } from './ParseBar'
@@ -70,6 +71,7 @@ export function Library({
   const [view, setView] = useState<ShelfView>(() => readShelfView(browserShelfStorage()))
   const [section, setSection] = useState<ShelfSection>(() => readShelfSection(browserShelfStorage()))
   const [fontsOpen, setFontsOpen] = useState(false)
+  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 719px)').matches)
   const shownBooks = booksInSection(books, section)
   const counts = sectionCounts(books)
   const sectionLabel = SHELF_INDEX.find((item) => item.id === section)?.label ?? '我的藏书'
@@ -89,6 +91,14 @@ export function Library({
   const marks = featuredBook ? shelfMarks(featuredBook) : null
   const featuredParsing = featuredBook ? parseFractionOf(parseGates, featuredBook.id) : null
   const turned = shown ? featured : null
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 719px)')
+    const apply = () => setPhone(media.matches)
+    apply()
+    media.addEventListener('change', apply)
+    return () => media.removeEventListener('change', apply)
+  }, [])
 
   useEffect(() => {
     const node = shelfRef.current
@@ -143,8 +153,43 @@ export function Library({
         takeFiles(event.dataTransfer.files)
       }}
     >
-      <ShelfIndex section={section} counts={counts} onPick={pick} />
-      <div className="library-main">
+      {phone ? (
+        <PhoneShelf
+          books={books}
+          parseGates={parseGates}
+          onOpen={onOpen}
+          onRemove={onRemove}
+          onDrop={onDrop}
+          onImport={() => inputRef.current?.click()}
+          onFonts={() => setFontsOpen(true)}
+        />
+      ) : (
+        <ShelfIndex section={section} counts={counts} onPick={pick} />
+      )}
+      <input
+        ref={inputRef}
+        className="phone-file"
+        type="file"
+        accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt"
+        multiple
+        hidden
+        onChange={(event) => {
+          takeFiles(event.target.files)
+          event.target.value = ''
+        }}
+      />
+      {fontsOpen ? (
+        <UserFontsPanel
+          fonts={userFonts}
+          activeFont={activeFont}
+          notice={fontNotice}
+          onAdd={onAddFonts}
+          onApply={onApplyFont}
+          onRemove={onRemoveFont}
+          onClose={() => setFontsOpen(false)}
+        />
+      ) : null}
+      <div className="library-main" hidden={phone}>
       <header className="library-head">
         <div className="brand">
           <LeafLogo className="brand-logo" />
@@ -170,29 +215,7 @@ export function Library({
             导入书籍
           </button>
         </div>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".epub,.pdf,.mobi,.azw3,.fb2,.txt"
-          multiple
-          hidden
-          onChange={(event) => {
-            takeFiles(event.target.files)
-            event.target.value = ''
-          }}
-        />
       </header>
-      {fontsOpen ? (
-        <UserFontsPanel
-          fonts={userFonts}
-          activeFont={activeFont}
-          notice={fontNotice}
-          onAdd={onAddFonts}
-          onApply={onApplyFont}
-          onRemove={onRemoveFont}
-          onClose={() => setFontsOpen(false)}
-        />
-      ) : null}
 
       {parsePending ? (
         <div className="parse-banner" role="status">
