@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { ReadAloudView } from './useReadAloud'
-import { nextRate, rateLabel } from '../lib/tts/config'
+import { rateChoices, rateLabel } from '../lib/tts/config'
+import { SKIP_SECONDS } from '../lib/tts/transport'
 
 type Props = {
   view: ReadAloudView
@@ -9,6 +10,8 @@ type Props = {
   onVoice: () => void
   onStop: () => void
 }
+
+const USUAL = new Set([1.25, 2])
 
 const stroke = {
   fill: 'none',
@@ -41,15 +44,6 @@ function PlayIcon({ playing }: { playing: boolean }) {
   )
 }
 
-function SkipIcon({ back }: { back?: boolean }) {
-  return (
-    <Glyph>
-      <path {...stroke} d={back ? 'M17.5 6.5 9 12l8.5 5.5z' : 'M6.5 6.5 15 12l-8.5 5.5z'} />
-      <path {...stroke} d={back ? 'M5.5 6.5v11' : 'M18.5 6.5v11'} />
-    </Glyph>
-  )
-}
-
 function CloseIcon() {
   return (
     <Glyph>
@@ -69,16 +63,33 @@ function statusText(view: ReadAloudView): string {
 
 export function ListenBar({ view, rate, onRate, onVoice, onStop }: Props) {
   const playing = view.phase === 'playing' || view.phase === 'loading'
+  const [ratesOpen, setRatesOpen] = useState(false)
+  const choices = rateChoices(rate)
+
   return (
     <div className="listen-bar" role="region" aria-label="朗读">
       <div className="listen-copy">
         <span className="listen-kicker">{statusText(view)}</span>
         <span className="listen-text">{view.text}</span>
       </div>
-      <div className="listen-controls">
-        <button type="button" className="listen-step" aria-label="上一句" onClick={view.previous}>
-          <SkipIcon back />
-        </button>
+      {ratesOpen ? (
+        <div className="listen-rates" role="group" aria-label="选择倍速">
+          {choices.map((step) => (
+            <button
+              key={step}
+              type="button"
+              className={USUAL.has(step) ? 'usual' : ''}
+              aria-pressed={Math.abs(step - rate) < 0.001}
+              onClick={() => onRate(step)}
+            >
+              {rateLabel(step)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="listen-transport">
+        <button type="button" aria-label="上一分段" onClick={() => view.segment(-1)}>上一分段</button>
+        <button type="button" aria-label="后退 5 秒" onClick={() => view.skip(-SKIP_SECONDS)}>−5秒</button>
         <button
           type="button"
           className="listen-play"
@@ -87,14 +98,16 @@ export function ListenBar({ view, rate, onRate, onVoice, onStop }: Props) {
         >
           <PlayIcon playing={playing} />
         </button>
-        <button type="button" className="listen-step" aria-label="下一句" onClick={view.next}>
-          <SkipIcon />
-        </button>
+        <button type="button" aria-label="前进 5 秒" onClick={() => view.skip(SKIP_SECONDS)}>+5秒</button>
+        <button type="button" aria-label="下一分段" onClick={() => view.segment(1)}>下一分段</button>
+      </div>
+      <div className="listen-controls">
         <button
           type="button"
           className="listen-rate"
-          aria-label={`语速 ${rateLabel(rate)}，点按切换`}
-          onClick={() => onRate(nextRate(rate))}
+          aria-expanded={ratesOpen}
+          aria-label={`语速 ${rateLabel(rate)}，选择倍速`}
+          onClick={() => setRatesOpen((openRates) => !openRates)}
         >
           {rateLabel(rate)}
         </button>

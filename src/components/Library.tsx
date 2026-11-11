@@ -13,6 +13,7 @@ import {
   type ShelfSection,
 } from '../lib/shelfIndex'
 import { shelfRows } from '../lib/shelfQuery'
+import type { ShelfPlayback } from '../lib/shelfListen'
 import { browserShelfStorage, readShelfView, writeShelfView, type ShelfView } from '../lib/shelfView'
 import { CoverShelf } from './CoverShelf'
 import { ListenShelf } from './ListenShelf'
@@ -37,6 +38,10 @@ type Props = {
   onTts: (patch: Partial<TtsConfig>) => void
   onOpen: (id: string) => void
   onListen: (id: string) => void
+  /** Phone listen tab plays in place. Desktop still opens the book. */
+  onShelfListen?: (id: string) => void
+  playback?: ShelfPlayback | null
+  onLocate?: () => void
   onImport: (files: FileList | File[]) => void
   onRemove: (id: string) => void
   onDrop: (id: string) => void
@@ -60,6 +65,9 @@ export function Library({
   onDismissNotice,
   onOpen,
   onListen,
+  onShelfListen,
+  playback = null,
+  onLocate,
   onImport,
   onRemove,
   onDrop,
@@ -173,7 +181,9 @@ export function Library({
           tts={tts}
           onDismissNotice={onDismissNotice}
           onOpen={onOpen}
-          onListen={onListen}
+          onListen={onShelfListen ?? onListen}
+          playback={playback}
+          onLocate={onLocate}
           onRemove={onRemove}
           onDrop={onDrop}
           onImport={() => inputRef.current?.click()}

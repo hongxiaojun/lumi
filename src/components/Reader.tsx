@@ -23,6 +23,17 @@ import { SearchPanel } from './SearchPanel'
 import { BookmarkPanel } from './BookmarkPanel'
 import { EngineSheet } from './EngineSheet'
 import { ListenBar } from './ListenBar'
+import type { ShelfPlayback } from '../lib/shelfListen'
+import {
+  artworkOf,
+  bindLockActions,
+  clearLockCard,
+  clipClock,
+  lockCopy,
+  showLockCard,
+  showLockClock,
+  type LockArtwork,
+} from '../lib/tts/nowPlaying'
 import { VoiceSheet } from './VoiceSheet'
 import { useReadAloud } from './useReadAloud'
 import type { UserFontChoice } from './UserFontsPanel'
@@ -48,6 +59,10 @@ type Props = {
   autoListen?: boolean
   listenResume?: { cfi?: string | null; fraction?: number } | null
   onListenStarted?: () => void
+  /** Shelf keeps this reader laid out but not shown. Skip painting the page color onto the document. */
+  backstage?: boolean
+  onPlayback?: (next: ShelfPlayback | null) => void
+  bindListenToggle?: (toggle: (() => void) | null) => void
 }
 
 export function Reader({
@@ -56,6 +71,7 @@ export function Reader({
   onCreateAnnotation, onUpdateAnnotation, onDeleteAnnotation,
   onToggleBookmark, onDeleteBookmark, onBack,
   autoListen = false, listenResume = null, onListenStarted,
+  backstage = false, onPlayback, bindListenToggle,
 }: Props) {
   const [atMenu, setAtMenu] = useState(false)
   const [atFoot, setAtFoot] = useState(false)
@@ -81,6 +97,10 @@ export function Reader({
     [listening, tts.listenFontSize, tts.listenLineHeight],
   )
   const autoListenDone = useRef(false)
+  bindListenToggle?.(listen.toggle)
+  const listenRef = useRef(listen)
+  listenRef.current = listen
+  const lockArt = useRef<LockArtwork[]>([])
   const quietProgressUntil = useRef(0)
   const [status, setStatusText] = useState<string | null>(null)
   const [statusTick, setStatusTick] = useState(0)
@@ -229,6 +249,70 @@ export function Reader({
   }, [])
 
   useEffect(() => {
+    onPlayback?.({
+      bookId: book.id,
+      active: listen.active,
+      phase: listen.phase,
+      text: listen.text,
+      error: listen.error,
+    })
+  }, [book.id, listen.active, listen.phase, listen.text, listen.error, onPlayback])
+
+  useEffect(() => () => {
+    onPlayback?.(null)
+    bindListenToggle?.(null)
+    clearLockCard()
+  }, [onPlayback, bindListenToggle])
+
+  useEffect(() => bindLockActions({
+    play: () => {
+      const view = listenRef.current
+      if (view.phase !== 'playing' && view.phase !== 'loading') view.toggle()
+    },
+    pause: () => {
+      const view = listenRef.current
+      if (view.phase === 'playing' || view.phase === 'loading') view.toggle()
+    },
+    skip: (seconds) => listenRef.current.skip(seconds),
+    previous: () => listenRef.current.segment(-1),
+    next: () => listenRef.current.segment(1),
+  }), [])
+
+  useEffect(() => {
+    if (!listen.active) {
+      clearLockCard()
+      return
+    }
+    const copy = lockCopy({ title: book.title, author: book.author, sentence: listen.text })
+    const paused = listen.phase === 'paused' || listen.phase === 'done' || listen.phase === 'error'
+    let cancelled = false
+    const pushClock = () => {
+      const clock = clipClock(
+        listenRef.current.place().position,
+        listenRef.current.place().duration,
+        listenRef.current.place().estimate,
+      )
+      if (clock) showLockClock(clock.position, clock.duration, paused)
+    }
+    showLockCard({ ...copy, artwork: lockArt.current, paused })
+    pushClock()
+    void artworkOf(book.cover, book.coverUrl).then((artwork) => {
+      if (cancelled || !listenRef.current.active) return
+      lockArt.current = artwork
+      showLockCard({ ...copy, artwork, paused })
+    })
+    const timer = window.setInterval(pushClock, 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [
+    listen.active, listen.phase, listen.text,
+    book.title, book.author, book.cover, book.coverUrl,
+  ])
+
+  useEffect(() => {
+    if (backstage) return
     const meta = document.querySelector('meta[name="theme-color"]')
     const previous = meta?.getAttribute('content')
     meta?.setAttribute('content', theme.bg)
@@ -239,7 +323,7 @@ export function Reader({
       document.documentElement.style.background = ''
       document.body.style.background = ''
     }
-  }, [theme.bg])
+  }, [theme.bg, backstage])
 
   useEffect(() => {
     if (!pinned || overlay) return

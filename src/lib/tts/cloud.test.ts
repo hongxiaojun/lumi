@@ -241,6 +241,22 @@ describe('prefetchSpeech (cross-chapter)', () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
   })
 
+  it('seeks inside a loaded clip and reports where it is', async () => {
+    let time = 1
+    vi.spyOn(HTMLMediaElement.prototype, 'duration', 'get').mockReturnValue(12)
+    vi.spyOn(HTMLMediaElement.prototype, 'currentTime', 'get').mockImplementation(() => time)
+    vi.spyOn(HTMLMediaElement.prototype, 'currentTime', 'set').mockImplementation((value) => {
+      time = Number(value)
+    })
+    const fetchMock = vi.fn(async () => okAudio())
+    vi.stubGlobal('fetch', fetchMock)
+    const handle = cloudSpeaker(config)(unit('定位这一句。'), handlers())
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(handle.position?.()).toEqual({ current: 1, duration: 12 })
+    expect(handle.seekTo?.(6)).toBe(true)
+    expect(time).toBe(6)
+  })
+
   it('ignores an empty list', () => {
     const fetchMock = vi.fn(async () => okAudio())
     vi.stubGlobal('fetch', fetchMock)

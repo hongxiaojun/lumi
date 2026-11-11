@@ -18,6 +18,7 @@ import {
   writePhoneTab,
   type PhoneTab,
 } from '../lib/phoneTabs'
+import type { ShelfPlayback } from '../lib/shelfListen'
 import { browserShelfStorage } from '../lib/shelfView'
 import { CoverShelf } from './CoverShelf'
 import { ListenShelf } from './ListenShelf'
@@ -33,6 +34,8 @@ type Props = {
   tts: TtsConfig
   onOpen: (id: string) => void
   onListen: (id: string) => void
+  playback?: ShelfPlayback | null
+  onLocate?: () => void
   onRemove: (id: string) => void
   onDrop: (id: string) => void
   onImport: () => void
@@ -49,6 +52,8 @@ export function PhoneShelf({
   onDismissNotice,
   onOpen,
   onListen,
+  playback = null,
+  onLocate,
   onRemove,
   onDrop,
   onImport,
@@ -142,6 +147,8 @@ export function PhoneShelf({
             tts={tts}
             onListen={onListen}
             onVoice={onVoice}
+            playback={playback}
+            onLocate={onLocate}
           />
         ) : null}
       </div>

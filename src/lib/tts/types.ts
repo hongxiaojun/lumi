@@ -11,6 +11,10 @@ export type SpeakHandle = {
   cancel: () => void
   pause?: () => boolean
   resume?: () => boolean
+  /** Seconds into the current clip, when the engine can report them. */
+  position?: () => { current: number; duration: number }
+  /** Move inside the current clip. False when this engine cannot seek. */
+  seekTo?: (seconds: number) => boolean
 }
 
 export type Speaker = (

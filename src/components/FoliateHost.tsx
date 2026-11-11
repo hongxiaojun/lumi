@@ -136,13 +136,15 @@ function applyLayout(
   const r = view.renderer
   if (!r) return
   const columns = listening ? 1 : spreadColumns(width, height, flow)
-  r.setAttribute('flow', flow)
+  if (listening) r.setAttribute('data-scroll-align', 'center')
+  else r.removeAttribute('data-scroll-align')
+  r.setAttribute('flow', listening ? 'scrolled' : flow)
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) r.removeAttribute('animated')
   else r.setAttribute('animated', '')
   r.setAttribute('max-column-count', String(columns))
   r.setAttribute('max-inline-size', `${SPREAD_PAGE_PX}px`)
   r.setAttribute('gap', '8%')
-  r.setAttribute('margin', `${listening ? PAGE_MARGIN_PX + 8 : PAGE_MARGIN_PX}px`)
+  r.setAttribute('margin', `${listening ? 12 : PAGE_MARGIN_PX}px`)
   r.setStyles?.(css)
   r.render?.()
   const docs = (r.getContents?.() ?? []).map((item) => item.doc)
@@ -870,11 +872,29 @@ export function FoliateHost({
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
+    let box = ''
     const apply = () => {
-      const renderer = viewRef.current?.renderer
-      if (!renderer) return
+      const view = viewRef.current
+      const renderer = view?.renderer
+      if (!view || !renderer) return
+      if (listeningRef.current) {
+        const next = `${host.clientWidth}x${host.clientHeight}`
+        if (next === box) return
+        box = next
+        const profile = shouldTypesetEnglish(scriptRef.current) ? 'en' : 'zh'
+        applyLayout(
+          view,
+          prefsRef.current.flow,
+          readerCSS(prefsRef.current, profile, readingFontFaces(fontFaces.current), true, undefined, listenStyleRef.current ?? undefined),
+          host.clientWidth,
+          host.clientHeight,
+          true,
+        )
+        return
+      }
+      box = ''
       const flow = prefsRef.current.flow
-      const next = String(listeningRef.current ? 1 : spreadColumns(host.clientWidth, host.clientHeight, flow))
+      const next = String(spreadColumns(host.clientWidth, host.clientHeight, flow))
       if (renderer.getAttribute('max-column-count') === next) return
       renderer.setAttribute('max-column-count', next)
       renderer.render?.()

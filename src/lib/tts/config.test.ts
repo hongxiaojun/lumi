@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampRate, cleanSecret, DEFAULT_TTS, mergeTts, nextRate, normalizeTts, pickVoice, rateLabel } from './config'
+import { clampRate, cleanSecret, DEFAULT_TTS, mergeTts, nextRate, normalizeTts, pickVoice, rateChoices, rateLabel } from './config'
 
 describe('normalizeTts', () => {
   it('falls back to defaults and clamps out-of-range values', () => {
@@ -82,10 +82,18 @@ describe('rate helpers', () => {
   })
 
   it('cycles through the quick steps and wraps', () => {
-    expect(nextRate(1)).toBe(1.2)
+    expect(nextRate(1)).toBe(1.25)
+    expect(nextRate(1.25)).toBe(1.5)
     expect(nextRate(1.5)).toBe(2)
     expect(nextRate(2)).toBe(0.8)
     expect(rateLabel(1)).toBe('1.0×')
+    expect(rateLabel(1.25)).toBe('1.25×')
+    expect(rateLabel(2)).toBe('2.0×')
+  })
+
+  it('offers 1.25 and 2 as choices and keeps a saved rate that is not in the list', () => {
+    expect(rateChoices(1.25)).toEqual([0.8, 1, 1.25, 1.5, 2])
+    expect(rateChoices(1.2)).toEqual([0.8, 1, 1.2, 1.25, 1.5, 2])
   })
 })
 

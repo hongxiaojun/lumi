@@ -264,6 +264,17 @@ export function blobSpeaker(
         )
         return true
       },
+      position() {
+        const duration = Number.isFinite(el.duration) ? el.duration : 0
+        const current = Number.isFinite(el.currentTime) ? el.currentTime : 0
+        return { current, duration }
+      },
+      seekTo(seconds: number) {
+        if (cancelled || !el.src || !Number.isFinite(el.duration) || el.duration <= 0) return false
+        const cap = Math.max(0, el.duration - 0.05)
+        el.currentTime = Math.min(Math.max(0, seconds), cap)
+        return true
+      },
     }
   }
 }

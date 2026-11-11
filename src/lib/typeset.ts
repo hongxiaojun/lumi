@@ -1,3 +1,4 @@
+import { lockDocumentScale } from './lockScale'
 import { detectScript, type ScriptKind } from './translate/lang'
 import { shouldAttemptUnwrap } from './unwrapLines'
 
@@ -36,6 +37,7 @@ export function prepareEnglishSection(doc: Document, bookLang: ScriptKind): Scri
 }
 
 export function prepareSection(doc: Document, bookLang: ScriptKind): ScriptKind {
+  lockDocumentScale(doc)
   const sample = (doc.body?.textContent ?? '').slice(0, 2500)
   const sectionKind = detectScript(sample)
   let kind = bookLang

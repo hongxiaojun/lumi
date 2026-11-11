@@ -69,6 +69,8 @@ import { randomId } from './lib/id'
 import { openAllowed, upsertBook } from './lib/parseGate'
 import { DEFAULT_PREFS } from './lib/styles'
 import { DEFAULT_TTS, mergeTts } from './lib/tts/config'
+import { unlockAudio } from './lib/tts/cloud'
+import { samePlayback, shelfPlayAction, type ShelfPlayback } from './lib/shelfListen'
 import type { UserFont } from './lib/userFonts'
 import {
   collectUserFonts,
@@ -105,7 +107,24 @@ export default function App() {
   }, [tts])
   const [autoListen, setAutoListen] = useState(false)
   const [listenResume, setListenResume] = useState<{ cfi?: string | null; fraction?: number } | null>(null)
-  useReadingClock(Boolean(current))
+  const [playerListen, setPlayerListen] = useState(false)
+  const [locateBook, setLocateBook] = useState(false)
+  const [playback, setPlayback] = useState<ShelfPlayback | null>(null)
+  const [narrowShelf, setNarrowShelf] = useState(() => window.matchMedia('(max-width: 719px)').matches)
+  const listenToggle = useRef<(() => void) | null>(null)
+  const reportPlayback = useCallback((next: ShelfPlayback | null) => {
+    setPlayback((prev) => (samePlayback(prev, next) ? prev : next))
+  }, [])
+  const bindListenToggle = useCallback((toggle: (() => void) | null) => {
+    listenToggle.current = toggle
+  }, [])
+  useReadingClock(Boolean(current) && (!playerListen || locateBook))
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 719px)')
+    const onChange = () => setNarrowShelf(media.matches)
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
   const [notes, setNotes] = useState<Annotation[]>([])
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [account, setAccount] = useState<string | null>(null)
@@ -580,39 +599,77 @@ export default function App() {
     else await deleteBookmark(id)
   }
 
-  if (current) {
-    return (
-      <Reader
-        book={current}
-        prefs={prefs}
-        translator={translator}
-        tts={tts}
-        autoListen={autoListen}
-        listenResume={listenResume}
-        onListenStarted={() => setAutoListen(false)}
-        notes={notes}
-        bookmarks={bookmarks}
-        onPrefs={handlePrefs}
-        userFonts={userFonts.map((font) => ({ id: font.id, name: font.name }))}
-        onTranslator={handleTranslator}
-        onTts={handleTts}
-        onProgress={handleProgress}
-        onCreateAnnotation={handleCreateNote}
-        onUpdateAnnotation={handleUpdateNote}
-        onDeleteAnnotation={handleDeleteNote}
-        onToggleBookmark={handleToggleBookmark}
-        onDeleteBookmark={handleDeleteBookmark}
-        onBack={() => {
-          setAutoListen(false)
-          setListenResume(null)
-          setOpenId(null)
-          void refresh()
-        }}
-      />
-    )
+  const shelfPlaying = Boolean(current && playerListen && !locateBook && narrowShelf)
+
+  function leaveBook() {
+    setPlayerListen(false)
+    setLocateBook(false)
+    setAutoListen(false)
+    setListenResume(null)
+    setOpenId(null)
+    void refresh()
   }
 
+  function backFromBook() {
+    if (playerListen && locateBook) {
+      setLocateBook(false)
+      return
+    }
+    leaveBook()
+  }
+
+  function playOnShelf(id: string) {
+    unlockAudio()
+    if (shelfPlayAction(id, playback) === 'toggle' && listenToggle.current) {
+      listenToggle.current()
+      return
+    }
+    setPlayerListen(true)
+    setLocateBook(false)
+    void handleOpen(id, true)
+  }
+
+  const reader = current ? (
+    <Reader
+      key={current.id}
+      book={current}
+      prefs={prefs}
+      translator={translator}
+      tts={tts}
+      autoListen={autoListen}
+      listenResume={listenResume}
+      onListenStarted={() => setAutoListen(false)}
+      backstage={shelfPlaying}
+      onPlayback={reportPlayback}
+      bindListenToggle={bindListenToggle}
+      notes={notes}
+      bookmarks={bookmarks}
+      onPrefs={handlePrefs}
+      userFonts={userFonts.map((font) => ({ id: font.id, name: font.name }))}
+      onTranslator={handleTranslator}
+      onTts={handleTts}
+      onProgress={handleProgress}
+      onCreateAnnotation={handleCreateNote}
+      onUpdateAnnotation={handleUpdateNote}
+      onDeleteAnnotation={handleDeleteNote}
+      onToggleBookmark={handleToggleBookmark}
+      onDeleteBookmark={handleDeleteBookmark}
+      onBack={backFromBook}
+    />
+  ) : null
+
   return (
+    <>
+      {current ? (
+        <div
+          className={shelfPlaying ? 'reader-backstage' : 'reader-slot'}
+          inert={shelfPlaying ? true : undefined}
+          aria-hidden={shelfPlaying ? true : undefined}
+        >
+          {reader}
+        </div>
+      ) : null}
+      {current && !shelfPlaying ? null : (
     <Library
       books={books}
       account={account}
@@ -623,8 +680,25 @@ export default function App() {
       tts={tts}
       onTts={handleTts}
       onDismissNotice={() => setError(null)}
-      onOpen={handleOpen}
-      onListen={(id) => { void handleOpen(id, true) }}
+      onOpen={(id) => {
+        if (playerListen && current?.id === id) {
+          setLocateBook(true)
+          return
+        }
+        setPlayerListen(false)
+        setLocateBook(false)
+        void handleOpen(id)
+      }}
+      onListen={(id) => {
+        setPlayerListen(false)
+        setLocateBook(false)
+        void handleOpen(id, true)
+      }}
+      onShelfListen={playOnShelf}
+      playback={playback}
+      onLocate={() => {
+        if (playback?.active) setLocateBook(true)
+      }}
       onImport={handleImport}
       onRemove={handleRemove}
       onDrop={(id) => void handleDropRecord(id)}
@@ -635,5 +709,7 @@ export default function App() {
       onApplyFont={(id) => void handleApplyFont(id)}
       onRemoveFont={(id) => void handleRemoveFont(id)}
     />
+      )}
+    </>
   )
 }

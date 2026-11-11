@@ -20,7 +20,7 @@ export const DEFAULT_TTS: TtsConfig = {
 
 export const RATE_MIN = 0.6
 export const RATE_MAX = 2
-export const RATE_STEPS = [0.8, 1, 1.2, 1.5, 2] as const
+export const RATE_STEPS = [0.8, 1, 1.25, 1.5, 2] as const
 
 export const LISTEN_SIZE_MIN = 18
 export const LISTEN_SIZE_MAX = 34
@@ -38,7 +38,19 @@ export function nextRate(rate: number): number {
 }
 
 export function rateLabel(rate: number): string {
-  return `${clampRate(rate).toFixed(1)}×`
+  const value = clampRate(rate)
+  const hundredths = Math.round(value * 100)
+  const text = hundredths % 10 === 0 ? value.toFixed(1) : value.toFixed(2)
+  return `${text}×`
+}
+
+/** Quick picks, plus the saved rate when it is not already one of them. */
+export function rateChoices(rate: number): number[] {
+  const steps: number[] = [...RATE_STEPS]
+  const current = clampRate(rate)
+  if (!steps.some((step) => Math.abs(step - current) < 0.001)) steps.push(current)
+  steps.sort((a, b) => a - b)
+  return steps
 }
 
 export function speechLang(language: string | undefined, text: string): string {

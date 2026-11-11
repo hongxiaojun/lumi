@@ -105,6 +105,18 @@ describe('SpeechPlayer', () => {
     expect(seen).toEqual([0, 1, 0])
   })
 
+  it('replays the current sentence and jumps to a chosen one', () => {
+    const { player, fake, seen } = make()
+    player.start()
+    fake.calls[0].handlers.onStart()
+    player.replay()
+    expect(fake.calls[0].cancelled).toBe(true)
+    expect(fake.calls[1].unit.text).toBe('第一句。')
+    player.go(2)
+    expect(seen).toEqual([0, 0, 2])
+    expect(fake.calls[2].unit.text).toBe('第三句。')
+  })
+
   it('pauses through the speaker and resumes it', () => {
     const { player, fake, states } = make()
     player.start()
@@ -135,6 +147,72 @@ describe('SpeechPlayer', () => {
     expect(errors).toEqual(['没有声音'])
     fake.calls[0].handlers.onEnd()
     expect(done).not.toHaveBeenCalled()
+  })
+
+  it('jumps a whole paragraph, not one sentence', () => {
+    const { player, fake, seen, done } = make()
+    player.start()
+    fake.calls[0].handlers.onStart()
+    player.nextSegment()
+    expect(seen).toEqual([0, 2])
+    expect(fake.calls[1].unit.text).toBe('第三句。')
+    player.previousSegment()
+    expect(seen).toEqual([0, 2, 0])
+    player.nextSegment()
+    player.nextSegment()
+    expect(done).toHaveBeenCalledTimes(1)
+  })
+
+  it('seeks five seconds inside a clip that can seek', () => {
+    const { player, fake, seen } = make()
+    player.start()
+    const sought: number[] = []
+    fake.calls[0].handle.position = () => ({ current: 1, duration: 20 })
+    fake.calls[0].handle.seekTo = (seconds) => {
+      sought.push(seconds)
+      return true
+    }
+    fake.calls[0].handlers.onStart()
+    player.skip(5, 1)
+    expect(sought).toEqual([6])
+    expect(seen).toEqual([0])
+  })
+
+  it('carries the leftover seconds into the sentence that contains them', () => {
+    const { player, fake, seen } = make()
+    const chapter = [
+      { blockIndex: 0, text: '中'.repeat(8), start: 0, occurrence: 0 },
+      { blockIndex: 0, text: '中'.repeat(8), start: 8, occurrence: 0 },
+      { blockIndex: 1, text: '中'.repeat(42), start: 0, occurrence: 0 },
+    ]
+    const local = new SpeechPlayer(chapter, fake.speaker, {
+      onState: () => {},
+      onUnit: (index) => seen.push(index),
+    }, () => 1_000)
+    local.start()
+    fake.calls[0].handlers.onStart()
+    local.skip(5, 1)
+    expect(seen.at(-1)).toBe(2)
+    const landed = fake.calls.at(-1)
+    const sought: number[] = []
+    if (landed) {
+      landed.handle.seekTo = (seconds) => {
+        sought.push(seconds)
+        return true
+      }
+      landed.handlers.onStart()
+    }
+    expect(sought[0]).toBeCloseTo(5 - (8 / 4.2) * 2, 5)
+  })
+
+  it('stops when five seconds runs past the last sentence', () => {
+    const { player, fake, done } = make()
+    player.start()
+    fake.calls[0].handle.position = () => ({ current: 1, duration: 2 })
+    fake.calls[0].handlers.onStart()
+    player.skip(5, 1)
+    expect(fake.calls[0].cancelled).toBe(true)
+    expect(done).toHaveBeenCalledTimes(1)
   })
 
   it('stops without marking the book finished', () => {

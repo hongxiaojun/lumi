@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import type { LibraryBook, TtsConfig } from '../types'
-import { shelfMarks } from '../lib/format'
+import { percentLabel, shelfMarks } from '../lib/format'
 import { parseCaption, parseFractionOf } from '../lib/parseGate'
+import { shelfPlayAction, spokenLine, type ShelfPlayback } from '../lib/shelfListen'
 import { rateLabel } from '../lib/tts/config'
 
 type Props = {
@@ -9,75 +11,183 @@ type Props = {
   tts: TtsConfig
   onListen: (id: string) => void
   onVoice: () => void
-  /** The sheet supplies its own panel head, so the phone tab's h1 can be hidden. */
+  playback?: ShelfPlayback | null
+  onLocate?: () => void
+  /** Kept so the desktop sheet can omit a page title. The player is the page. */
   heading?: boolean
 }
 
-export function ListenShelf({ books, parseGates, tts, onListen, onVoice, heading = true }: Props) {
-  const first = books[0]
-  const rest = books.slice(1)
-  const provider =
-    tts.provider === 'cloud'
-      ? `云端 · ${tts.cloudVoice}`
-      : tts.provider === 'azure'
-        ? `Azure · ${tts.azureVoice}`
-        : '系统语音'
-  const resumed = typeof first?.lastOpenedAt === 'number' && first.lastOpenedAt > 0
-  const firstParsing = first ? parseFractionOf(parseGates, first.id) : null
+const blobCovers = new WeakMap<Blob, string>()
+
+function coverSrc(book: LibraryBook): string | null {
+  if (book.coverUrl) return book.coverUrl
+  if (!book.cover || book.cover.size === 0) return null
+  const known = blobCovers.get(book.cover)
+  if (known) return known
+  const url = URL.createObjectURL(book.cover)
+  blobCovers.set(book.cover, url)
+  return url
+}
+
+function providerName(tts: TtsConfig): string {
+  if (tts.provider === 'cloud') return '云端'
+  if (tts.provider === 'azure') return 'Azure'
+  return '系统'
+}
+
+function Glyph({ d }: { d: string }) {
   return (
-    <section className="phone-listen">
-      {heading ? <h1>朗读</h1> : null}
-      <p className="phone-quiet">让书自己出声。朗读时会换成单栏大字、宽行距的排版，眼睛可以歇一会儿。</p>
-      {first ? (
-        <button
-          className="listen-start"
-          type="button"
-          disabled={firstParsing !== null}
-          onClick={() => onListen(first.id)}
-        >
-          <span className="listen-start-kicker">
-            {firstParsing !== null
-              ? parseCaption(firstParsing)
-              : resumed ? '从上次停下的地方继续' : '从开头开始朗读'}
-          </span>
-          <strong>{first.title}</strong>
-          <span>{first.author || first.fileName}</span>
-          <span className="listen-start-go">开始朗读</span>
-        </button>
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path
+        d={d}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+export function ListenShelf({ books, parseGates, tts, onListen, onVoice, playback = null, onLocate }: Props) {
+  const [index, setIndex] = useState(0)
+  const [listOpen, setListOpen] = useState(false)
+  const at = books.length === 0 ? 0 : Math.min(index, books.length - 1)
+  const now = books[at]
+  const parsing = now ? parseFractionOf(parseGates, now.id) : null
+  const resumed = typeof now?.lastOpenedAt === 'number' && now.lastOpenedAt > 0
+  const marks = now ? shelfMarks(now) : null
+  const fraction = parsing ?? now?.fraction ?? 0
+  const src = now ? coverSrc(now) : null
+  const sessionHere = Boolean(now && shelfPlayAction(now.id, playback) === 'toggle')
+  const sounding = sessionHere && (playback?.phase === 'playing' || playback?.phase === 'loading')
+  const line = spokenLine(playback)
+
+  return (
+    <section className="phone-listen" aria-label="朗读">
+      {now && marks ? (
+        <div className="listen-stage">
+          <div className="listen-cover-slot">
+            <div className="listen-cover">
+              {src ? <img src={src} alt="" /> : <div className="listen-cover-fallback">{now.title}</div>}
+            </div>
+          </div>
+          <div className="listen-body">
+          <div className="listen-now">
+            <h1 className="listen-now-title">{now.title}</h1>
+            <p>{now.author || '未知作者'}</p>
+          </div>
+          <div className="listen-progress">
+            <div className="listen-progress-track" aria-hidden="true">
+              <i style={{ width: `${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%` }} />
+            </div>
+            <div className="listen-progress-times">
+              <span>{parsing !== null ? parseCaption(parsing) : marks.progress}</span>
+              <span>
+                {parsing === null && fraction > 0 && fraction < 0.98
+                  ? `剩余 ${percentLabel(1 - fraction)}`
+                  : ''}
+              </span>
+            </div>
+          </div>
+          <div className="listen-transport" role="group" aria-label="播放">
+            <button
+              className="listen-queue-toggle"
+              type="button"
+              aria-expanded={listOpen}
+              aria-label="播放列表"
+              onClick={() => setListOpen((open) => !open)}
+            >
+              <Glyph d="M5 7h14M5 12h14M5 17h10" />
+            </button>
+            <button
+              type="button"
+              aria-label="上一本"
+              disabled={at === 0}
+              onClick={() => setIndex(at - 1)}
+            >
+              <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                <path fill="currentColor" d="M16.5 6.2 8.2 12l8.3 5.8z" />
+                <path d="M6.5 6v12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              className="listen-play"
+              type="button"
+              disabled={parsing !== null}
+              aria-label={sounding ? '暂停朗读' : resumed || sessionHere ? '继续朗读' : '开始朗读'}
+              onClick={() => onListen(now.id)}
+            >
+              {sounding ? (
+                <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+                  <path fill="currentColor" d="M7 5h3.2v14H7zM13.8 5H17v14h-3.2z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+                  <path fill="currentColor" d="M8 5.2 18.6 12 8 18.8z" />
+                </svg>
+              )}
+            </button>
+            <button
+              type="button"
+              aria-label="下一本"
+              disabled={at >= books.length - 1}
+              onClick={() => setIndex(at + 1)}
+            >
+              <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+                <path fill="currentColor" d="M7.5 6.2 15.8 12 7.5 17.8z" />
+                <path d="M17.5 6v12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              aria-label={`朗读设置，${providerName(tts)}，${rateLabel(tts.rate)}`}
+              onClick={onVoice}
+            >
+              <Glyph d="M4 9h3l4-3v12l-4-3H4zM16 9.5a3.5 3.5 0 0 1 0 5M18 7a6.5 6.5 0 0 1 0 10" />
+            </button>
+          </div>
+          {line && onLocate ? (
+            <div className="listen-lyric">
+              <p>{line}</p>
+              <button type="button" onClick={onLocate}>定位全文</button>
+            </div>
+          ) : null}
+          </div>
+          <div className={listOpen ? 'listen-queue open' : 'listen-queue'}>
+              <h2>朗读记录</h2>
+              <ul>
+                {books.map((book, item) => {
+                  const gate = parseFractionOf(parseGates, book.id)
+                  return (
+                    <li key={book.id}>
+                      <button
+                        type="button"
+                        disabled={gate !== null}
+                        aria-current={item === at ? 'true' : undefined}
+                        onClick={() => {
+                          setIndex(item)
+                          if (shelfPlayAction(book.id, playback) === 'toggle') return
+                          onListen(book.id)
+                        }}
+                      >
+                        <strong>{book.title}</strong>
+                        <span>
+                          {gate !== null
+                            ? parseCaption(gate)
+                            : `${playback?.active && playback.bookId === book.id ? '正在听 · ' : ''}${book.author || '未知作者'} · ${shelfMarks(book).progress}`}
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+          </div>
+        </div>
       ) : (
         <p className="phone-quiet">书架还是空的。导入一本书，就能从这里开始朗读。</p>
       )}
-      <div className="phone-listen-settings">
-        <div>
-          <strong>声音</strong>
-          <span>{provider} · {rateLabel(tts.rate)}</span>
-        </div>
-        <button className="btn" type="button" onClick={onVoice}>
-          朗读设置
-        </button>
-      </div>
-      {rest.length ? (
-        <>
-          <h2>继续朗读</h2>
-          <ul>
-            {rest.map((book) => {
-              const parsing = parseFractionOf(parseGates, book.id)
-              return (
-                <li key={book.id}>
-                  <button type="button" disabled={parsing !== null} onClick={() => onListen(book.id)}>
-                    <strong>{book.title}</strong>
-                    <span>
-                      {parsing !== null
-                        ? parseCaption(parsing)
-                        : `${book.author || '未知作者'} · ${shelfMarks(book).progress}`}
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </>
-      ) : null}
     </section>
   )
 }

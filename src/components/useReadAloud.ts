@@ -16,13 +16,19 @@ export type ReadAloudView = {
   index: number
   total: number
   text: string
+  lines: readonly string[]
   error: string | null
   start: (range?: Range | null) => void
   stop: () => void
   toggle: () => void
-  next: () => void
-  previous: () => void
+  /** -1 is the previous paragraph, 1 is the next paragraph. */
+  segment: (direction: -1 | 1) => void
+  /** Negative seeks backward. Cloud audio lands on the exact second. */
+  skip: (seconds: number) => void
+  go: (index: number) => void
   repaint: () => void
+  /** Playhead of the sentence now speaking, for the lock screen clock. */
+  place: () => { position: number; duration: number; estimate: number }
 }
 
 type Ui = {
@@ -31,10 +37,11 @@ type Ui = {
   index: number
   total: number
   text: string
+  lines: readonly string[]
   error: string | null
 }
 
-const IDLE: Ui = { active: false, phase: 'idle', index: 0, total: 0, text: '', error: null }
+const IDLE: Ui = { active: false, phase: 'idle', index: 0, total: 0, text: '', lines: [], error: null }
 
 type Current = { chapter: ListenChapter; unit: SpeechUnit; word: { text: string; offset: number } | null }
 
@@ -166,6 +173,7 @@ export function useReadAloud({
       index: startAt,
       total: chapter.units.length,
       text: chapter.units[startAt]?.text ?? '',
+      lines: chapter.units.map((unit) => unit.text),
     }))
     player.start(startAt)
   }, [clearRetry, finishChapter, paint, speak, warmCache])
@@ -213,23 +221,37 @@ export function useReadAloud({
     start()
   }, [start, stop])
 
-  const next = useCallback(() => {
+  const segment = useCallback((direction: -1 | 1) => {
     const player = playerRef.current
     if (!player) {
-      start()
+      if (direction > 0) start()
       return
     }
-    player.next()
+    if (direction > 0) player.nextSegment()
+    else player.previousSegment()
   }, [start])
 
-  const previous = useCallback(() => {
-    playerRef.current?.previous()
+  const skip = useCallback((seconds: number) => {
+    const player = playerRef.current
+    if (!player) {
+      if (seconds > 0) start()
+      return
+    }
+    player.skip(seconds, ttsRef.current.rate)
+  }, [start])
+
+  const go = useCallback((index: number) => {
+    playerRef.current?.go(index)
   }, [])
 
   const repaint = useCallback(() => {
     const current = currentRef.current
     if (current) paint(current, false)
   }, [paint])
+
+  const place = useCallback(() => {
+    return playerRef.current?.place(ttsRef.current.rate) ?? { position: 0, duration: 0, estimate: 0 }
+  }, [])
 
   useEffect(() => {
     if (!nav) return
@@ -246,6 +268,15 @@ export function useReadAloud({
     paint(current, false)
   }, [tts.listenLayout, paint])
 
+  const rateRef = useRef(tts.rate)
+  useEffect(() => {
+    if (rateRef.current === tts.rate) return
+    rateRef.current = tts.rate
+    const player = playerRef.current
+    if (!activeRef.current || !player) return
+    if (player.state === 'playing' || player.state === 'loading' || player.state === 'paused') player.replay()
+  }, [tts.rate])
+
   useEffect(() => () => {
     activeRef.current = false
     clearRetry()
@@ -253,5 +284,5 @@ export function useReadAloud({
     currentRef.current?.chapter.clear()
   }, [clearRetry])
 
-  return { ...ui, start, stop, toggle, next, previous, repaint }
+  return { ...ui, start, stop, toggle, segment, skip, go, repaint, place }
 }
