@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { readSearchHistory, rememberSearch, writeSearchHistory } from '../lib/searchHistory'
 import type { LibraryBook, TtsConfig } from '../types'
 import { shelfMarks } from '../lib/format'
 import { parseCaption, parseFractionOf } from '../lib/parseGate'
@@ -17,11 +18,11 @@ import {
   writePhoneTab,
   type PhoneTab,
 } from '../lib/phoneTabs'
-import { menuPress } from '../lib/menuChrome'
 import { browserShelfStorage } from '../lib/shelfView'
 import { CoverShelf } from './CoverShelf'
 import { ListenShelf } from './ListenShelf'
 import { ParseBar } from './ParseBar'
+import { PhoneHome } from './PhoneHome'
 
 type Props = {
   books: LibraryBook[]
@@ -57,7 +58,7 @@ export function PhoneShelf({
   const [tab, setTab] = useState<PhoneTab>(() => readPhoneTab(browserShelfStorage()))
   const [section, setSection] = useState<ShelfSection>('library')
   const [query, setQuery] = useState('')
-  const recent = continueBooks(books, 6)
+  const [history, setHistory] = useState(() => readSearchHistory(browserShelfStorage()))
   const listed = booksInSection(books, section)
   const found = books.filter((book) => matchesQuery(book, query))
   const listenRecent = continueBooks(books, 8)
@@ -71,6 +72,13 @@ export function PhoneShelf({
   function pick(next: PhoneTab) {
     setTab(next)
     writePhoneTab(browserShelfStorage(), next)
+  }
+
+  function remember(value: string) {
+    const next = rememberSearch(history, value)
+    if (next.join('\n') === history.join('\n')) return
+    setHistory(next)
+    writeSearchHistory(browserShelfStorage(), next)
   }
 
   return (
@@ -95,8 +103,8 @@ export function PhoneShelf({
           </div>
         ) : null}
         {tab === 'home' ? (
-          <Home
-            books={recent}
+          <PhoneHome
+            books={books}
             parseGates={parseGates}
             onOpen={onOpen}
             onImport={onImport}
@@ -117,7 +125,15 @@ export function PhoneShelf({
           </>
         ) : null}
         {tab === 'search' ? (
-          <Search books={found} query={query} parseGates={parseGates} onQuery={setQuery} onOpen={onOpen} />
+          <Search
+            books={found}
+            query={query}
+            history={history}
+            parseGates={parseGates}
+            onQuery={setQuery}
+            onRemember={remember}
+            onOpen={onOpen}
+          />
         ) : null}
         {tab === 'listen' ? (
           <ListenShelf
@@ -180,57 +196,24 @@ function SectionSwitch({
   )
 }
 
-function Home({
-  books,
-  parseGates,
-  onOpen,
-  onImport,
-  onFonts,
-}: {
-  books: LibraryBook[]
-  parseGates?: Record<string, number>
-  onOpen: (id: string) => void
-  onImport: () => void
-  onFonts: () => void
-}) {
-  return (
-    <section className="phone-home">
-      <h1>主页</h1>
-      <div className="phone-actions">
-        <button className="btn primary" type="button" onClick={onImport}>
-          导入书籍
-        </button>
-        <button className="btn" type="button" onPointerUp={(event) => menuPress(event, onFonts)}>
-          我的字体
-        </button>
-      </div>
-      <h2>继续阅读</h2>
-      {books.length === 0 ? (
-        <p className="phone-quiet">还没有打开过的书。导入一本，读过之后会出现在这里。</p>
-      ) : (
-        <div className="phone-row">
-          {books.map((book) => (
-            <BookChip key={book.id} book={book} parsing={parseFractionOf(parseGates, book.id)} onOpen={onOpen} />
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
 function Search({
   books,
   query,
+  history,
   parseGates,
   onQuery,
+  onRemember,
   onOpen,
 }: {
   books: LibraryBook[]
   query: string
+  history: string[]
   parseGates?: Record<string, number>
   onQuery: (value: string) => void
+  onRemember: (value: string) => void
   onOpen: (id: string) => void
 }) {
+  const typed = query.trim().length > 0
   return (
     <section className="phone-search">
       <h1>搜索</h1>
@@ -240,43 +223,54 @@ function Search({
         value={query}
         placeholder="书名、作者或文件名"
         aria-label="搜索书架"
+        enterKeyHint="search"
         onChange={(event) => onQuery(event.target.value)}
+        onBlur={() => onRemember(query)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') onRemember(query)
+        }}
       />
-      {query.trim() && books.length === 0 ? <p className="phone-quiet">书架上没有这本书。</p> : null}
-      <ul>
-        {books.map((book) => {
-          const marks = shelfMarks(book)
-          const parsing = parseFractionOf(parseGates, book.id)
-          return (
-            <li key={book.id}>
-              <button type="button" disabled={parsing !== null} onClick={() => onOpen(book.id)}>
-                <strong>{book.title}</strong>
-                <span>{book.author || book.fileName}</span>
-                <span>{marks.progress}</span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+      {typed && books.length === 0 ? <p className="phone-quiet">书架上没有这本书。</p> : null}
+      {!typed && history.length === 0 ? <p className="phone-quiet">还没有搜索记录。</p> : null}
+      {!typed && history.length > 0 ? (
+        <>
+          <p className="phone-quiet">最近搜索</p>
+          <ul>
+            {history.map((item) => (
+              <li key={item}>
+                <button type="button" onClick={() => onQuery(item)}>
+                  <strong>{item}</strong>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {typed ? (
+        <ul>
+          {books.map((book) => {
+            const marks = shelfMarks(book)
+            const parsing = parseFractionOf(parseGates, book.id)
+            return (
+              <li key={book.id}>
+                <button
+                  type="button"
+                  disabled={parsing !== null}
+                  onClick={() => {
+                    onRemember(query)
+                    onOpen(book.id)
+                  }}
+                >
+                  <strong>{book.title}</strong>
+                  <span>{book.author || book.fileName}</span>
+                  <span>{marks.progress}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
     </section>
   )
 }
 
-function BookChip({
-  book,
-  parsing,
-  onOpen,
-}: {
-  book: LibraryBook
-  parsing: number | null
-  onOpen: (id: string) => void
-}) {
-  const marks = shelfMarks(book)
-  return (
-    <button className="phone-chip" type="button" disabled={parsing !== null} onClick={() => onOpen(book.id)}>
-      <strong>{book.title}</strong>
-      <span>{book.author}</span>
-      <span>{marks.progress}</span>
-    </button>
-  )
-}

@@ -81,6 +81,9 @@ import {
 import { DEFAULT_SECRETS } from './lib/translate/engines'
 import { Library } from './components/Library'
 import { Reader } from './components/Reader'
+import { useReadingClock } from './components/useReadingClock'
+import { rememberFinished } from './lib/homeReading'
+import { readingPlace } from './lib/format'
 
 export default function App() {
   const [books, setBooks] = useState<LibraryBook[]>([])
@@ -102,6 +105,7 @@ export default function App() {
   }, [tts])
   const [autoListen, setAutoListen] = useState(false)
   const [listenResume, setListenResume] = useState<{ cfi?: string | null; fraction?: number } | null>(null)
+  useReadingClock(Boolean(current))
   const [notes, setNotes] = useState<Annotation[]>([])
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [account, setAccount] = useState<string | null>(null)
@@ -501,6 +505,7 @@ export default function App() {
     setCurrent((cur) => {
       if (!cur) return cur
       const next = { ...cur, ...patch, lastOpenedAt: Date.now() }
+      if (readingPlace(next.fraction) === 'finished') rememberFinished(localStorage, next.id, next.lastOpenedAt)
       if (progressTimer.current) window.clearTimeout(progressTimer.current)
       progressTimer.current = window.setTimeout(() => {
         const user = deviceId.current
