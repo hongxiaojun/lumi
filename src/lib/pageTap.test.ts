@@ -47,6 +47,17 @@ describe('tapPlace', () => {
     page.remove()
   })
 
+  it('turns a narrow page from the bottom corners and keeps the upper page as the menu', () => {
+    const { page, frame } = stage([0, 0, 390, 800], [16, 20, 358, 740], [16, 20, 358, 740])
+    expect(tapPlace(40, frame, page, 700)).toBe('left')
+    expect(tapPlace(350, frame, page, 720)).toBe('right')
+    expect(tapPlace(40, frame, page, 780)).toBe('left')
+    expect(tapPlace(200, frame, page, 720)).toBe('text')
+    expect(tapPlace(30, frame, page, 200)).toBe('text')
+    expect(tapPlace(360, frame, page, 80)).toBe('text')
+    page.remove()
+  })
+
   it('reads the visible page when the chapter iframe is many pages wide', () => {
     const { page, frame } = stage([0, 0, 800, 600], [0, 10, 800, 580], [-2400, 10, 4800, 580])
     // A click in the iframe reports coordinates local to that iframe.

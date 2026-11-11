@@ -16,6 +16,39 @@ const debounce = (f, wait, immediate) => {
 
 const lerp = (min, max, x) => x * (max - min) + min
 const easeOutCubic = x => 1 - (1 - x) * (1 - x) * (1 - x)
+const easeOutQuart = x => 1 - (1 - x) ** 4
+
+// A still finger is a tap. The page starts following only after the finger
+// leaves this box, and only when the drag is more horizontal than vertical.
+// Keep these in sync with the tests that import them.
+export const GESTURE_SLOP = 18
+export const SWIPE_COMMIT = 0.28
+export const SWIPE_FLICK = 0.35
+
+export function gestureKind(dx, dy) {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return 'tap'
+    const adx = Math.abs(dx)
+    const ady = Math.abs(dy)
+    if (adx < GESTURE_SLOP && ady < GESTURE_SLOP) return 'tap'
+    if (adx >= ady) return 'horizontal'
+    return 'other'
+}
+
+// Extra pixels added to the view center so a drag past SWIPE_COMMIT, or a
+// flick, lands on the next page. A smaller drag springs back. Positive speed
+// turns forward in LTR and backward in RTL, matching the old velocity term.
+export function snapBoost(travel, speed, size, rtl) {
+    if (!(size > 0)) return 0
+    const commit = size * SWIPE_COMMIT
+    const t = Number.isFinite(travel) ? travel : 0
+    const v = Number.isFinite(speed) ? speed : 0
+    const signedSpeed = rtl ? -v : v
+    let dir = 0
+    if (t >= commit || signedSpeed >= SWIPE_FLICK) dir = 1
+    else if (t <= -commit || signedSpeed <= -SWIPE_FLICK) dir = -1
+    if (!dir) return 0
+    return dir * (size / 2 + 1)
+}
 const animate = (a, b, duration, ease, render) => new Promise(resolve => {
     let start
     const step = now => {
@@ -297,12 +330,15 @@ class View {
         if (this.#column) this.columnize(layout)
         else this.scrolled(layout)
     }
-    scrolled({ gap, columnWidth }) {
+    scrolled({ gap, columnWidth, blockPad = 0 }) {
         const vertical = this.#vertical
         const doc = this.document
+        const pad = blockPad > 0
+            ? (vertical ? `${gap}px ${blockPad}px` : `${blockPad}px ${gap}px`)
+            : (vertical ? `${gap}px 0` : `0 ${gap}px`)
         setStylesImportant(doc.documentElement, {
             'box-sizing': 'border-box',
-            'padding': vertical ? `${gap}px 0` : `0 ${gap}px`,
+            'padding': pad,
             'column-width': 'auto',
             'height': 'auto',
             'width': 'auto',
@@ -760,13 +796,18 @@ export class Paginator extends HTMLElement {
             this.setAttribute('dir', vertical ? 'rtl' : 'ltr')
             this.#top.style.padding = '0'
             const columnWidth = maxInlineSize
+            // Half the stage. Same ratio as listenBlockPad in src/lib/listenLayout.ts,
+            // so the spoken sentence can sit in the middle, including the first one.
+            const blockPad = this.getAttribute('data-scroll-align') === 'center'
+                ? Math.round((vertical ? this.#container.clientWidth : this.#container.clientHeight) * 0.5)
+                : 0
 
             this.heads = null
             this.feet = null
             this.#header.replaceChildren()
             this.#footer.replaceChildren()
 
-            return { flow, margin, gap, columnWidth }
+            return { flow, margin, gap, columnWidth, blockPad }
         }
 
         const divisor = Math.min(maxColumnCount, Math.ceil(size / maxInlineSize))
@@ -850,10 +891,9 @@ export class Paginator extends HTMLElement {
         const { start, end, pages, size } = this
         const min = Math.abs(offset) - a
         const max = Math.abs(offset) + b
-        const d = velocity * (this.#rtl ? -size : size)
+        const boost = snapBoost(start - Math.abs(offset), velocity, size, this.#rtl)
         const page = Math.floor(
-            Math.max(min, Math.min(max, (start + end) / 2
-                + (isNaN(d) ? 0 : d))) / size)
+            Math.max(min, Math.min(max, (start + end) / 2 + boost)) / size)
 
         this.#scrollToPage(page, 'snap').then(() => {
             const dir = page <= 0 ? -1 : page >= pages - 1 ? 1 : null
@@ -865,44 +905,72 @@ export class Paginator extends HTMLElement {
     }
     #onTouchStart(e) {
         const touch = e.changedTouches[0]
+        const x = touch?.screenX, y = touch?.screenY
         this.#touchState = {
-            x: touch?.screenX, y: touch?.screenY,
-            t: e.timeStamp,
-            vx: 0, xy: 0,
+            x, y, x0: x, y0: y,
+            t: e.timeStamp, t0: e.timeStamp,
+            vx: 0, vy: 0,
+            axis: '',
+            samples: [{ x, t: e.timeStamp }],
         }
+    }
+    #rememberFlick(state, x, t) {
+        const samples = state.samples ?? []
+        samples.push({ x, t })
+        state.samples = samples.filter(sample => t - sample.t <= 90)
+        const from = state.samples[0]
+        state.vx = from && t > from.t ? (from.x - x) / (t - from.t) : 0
     }
     #onTouchMove(e) {
         const state = this.#touchState
-        if (state.pinched) return
+        if (state.pinched || state.axis === 'y') return
         state.pinched = globalThis.visualViewport.scale > 1
-        if (this.scrolled || state.pinched) return
+        if (this.scrolled || state.pinched || state.axis === 'y') return
         if (e.touches.length > 1) {
             if (this.#touchScrolled) e.preventDefault()
             return
         }
-        e.preventDefault()
         const touch = e.changedTouches[0]
         const x = touch.screenX, y = touch.screenY
-        const dx = state.x - x, dy = state.y - y
-        const dt = e.timeStamp - state.t
+        if (state.axis !== 'x') {
+            const kind = gestureKind(state.x0 - x, state.y0 - y)
+            if (kind === 'tap') return
+            if (kind !== 'horizontal') {
+                state.axis = 'y'
+                return
+            }
+            state.axis = 'x'
+            e.preventDefault()
+            this.#touchScrolled = true
+            this.scrollBy(state.x0 - x, 0)
+            state.x = x
+            state.y = y
+            state.t = e.timeStamp
+            this.#rememberFlick(state, x, e.timeStamp)
+            return
+        }
+        e.preventDefault()
+        const dx = state.x - x
         state.x = x
         state.y = y
         state.t = e.timeStamp
-        state.vx = dx / dt
-        state.vy = dy / dt
+        this.#rememberFlick(state, x, e.timeStamp)
         this.#touchScrolled = true
-        this.scrollBy(dx, dy)
+        this.scrollBy(dx, 0)
     }
     #onTouchEnd() {
+        const axis = this.#touchState?.axis
+        const vx = this.#touchState?.vx ?? 0
+        const vy = this.#touchState?.vy ?? 0
         this.#touchScrolled = false
-        if (this.scrolled) return
+        if (this.scrolled || axis !== 'x') return
 
         // XXX: Firefox seems to report scale as 1... sometimes...?
         // at this point I'm basically throwing `requestAnimationFrame` at
         // anything that doesn't work
         requestAnimationFrame(() => {
             if (globalThis.visualViewport.scale === 1)
-                this.snap(this.#touchState.vx, this.#touchState.vy)
+                this.snap(vx, vy)
         })
     }
     // allows one to process rects as if they were LTR and horizontal
@@ -925,7 +993,15 @@ export class Paginator extends HTMLElement {
     }
     async #scrollToRect(rect, reason) {
         if (this.scrolled) {
-            const offset = this.#getRectMapper()(rect).left - this.#margin
+            const mapped = this.#getRectMapper()(rect)
+            let offset = mapped.left - this.#margin
+            // centerScrollOffset(mapped.left, span, this.size): the sentence's
+            // middle lands on the stage's middle. mapped.left already includes
+            // the view padding, so do not subtract margin a second time.
+            if (this.getAttribute('data-scroll-align') === 'center') {
+                const span = Math.max(0, mapped.right - mapped.left)
+                offset = Math.max(0, mapped.left - (this.size - span) / 2)
+            }
             return this.#scrollTo(offset, reason)
         }
         const offset = this.#getRectMapper()(rect).left
@@ -945,10 +1021,11 @@ export class Paginator extends HTMLElement {
             const distance = Math.abs(offset - element[scrollProp])
             const page = this.size
             // A short settle should not take as long as a full page turn.
+            const span = Math.min(1, distance / page)
             const duration = this.scrolled || !(page > 0) ? 300
-                : Math.round(Math.min(320, 170 + Math.min(1, distance / page) * 150))
+                : Math.round(Math.min(240, 100 + span * 140))
             return animate(
-                element[scrollProp], offset, duration, easeOutCubic,
+                element[scrollProp], offset, duration, this.scrolled ? easeOutCubic : easeOutQuart,
                 x => element[scrollProp] = x,
             ).then(() => {
                 this.#scrollBounds = [offset, this.atStart ? 0 : size, this.atEnd ? 0 : size]

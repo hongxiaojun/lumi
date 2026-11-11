@@ -574,9 +574,13 @@ export function FoliateHost({
         const start = renderer.start
         const size = renderer.size
         if (typeof start !== 'number' || typeof size !== 'number') return
-        const { seam, shade } = pageSeam(start - turnStart, size)
+        const moved = start - turnStart
+        const { seam, shade } = pageSeam(moved, size)
         host.style.setProperty('--leaf-seam', `${seam * 100}%`)
         host.style.setProperty('--leaf-shade', String(shade))
+        if (moved > 0.5) host.dataset.leafTurn = 'next'
+        else if (moved < -0.5) host.dataset.leafTurn = 'prev'
+        else delete host.dataset.leafTurn
       }
       const scheduleSeam = () => {
         if (turnFrame) return
@@ -590,7 +594,26 @@ export function FoliateHost({
           turnFrame = 0
         }
         delete host.dataset.turning
+        delete host.dataset.leafTurn
         host.style.setProperty('--leaf-shade', '0')
+      }
+      const settleSeam = (startedAt: number) => {
+        paintSeam()
+        const renderer = view.renderer
+        const start = renderer?.start
+        const size = renderer?.size
+        const aligned = typeof start === 'number' && typeof size === 'number' && size > 0
+          && Math.abs(start / size - Math.round(start / size)) < 0.004
+        if (aligned || performance.now() - startedAt > 420) {
+          endSeam()
+          return
+        }
+        const schedule = doc.defaultView?.requestAnimationFrame?.bind(doc.defaultView)
+        if (!schedule) {
+          endSeam()
+          return
+        }
+        turnFrame = schedule(() => settleSeam(startedAt))
       }
       const onDown = (ev: Event) => {
         finger = ev.type === 'touchstart'
@@ -612,29 +635,38 @@ export function FoliateHost({
       const onClick = (ev: MouseEvent) => {
         // The matching touchend already ran the tap. A late click would turn twice.
         if (finger || tapClaims(ev.target) || ev.defaultPrevented) return
-        runTap(ev.clientX)
+        runTap(ev.clientX, ev.clientY)
       }
       const onTouchEnd = (ev: Event) => {
         const point = pointOf(ev)
-        endSeam()
-        if (!point || tapClaims(ev.target)) return
+        if (!point || tapClaims(ev.target)) {
+          endSeam()
+          return
+        }
         gate.up(doc.getSelection()?.toString() ?? '', point.x, point.y)
         const follow = touchFollows(
           prefsRef.current.flow,
-          Math.hypot(point.x - touchX, point.y - touchY),
+          point.x - touchX,
+          point.y - touchY,
         )
         // The paginator owns the finger-following scroll and its snap. A swipe
         // must not also call goLeft/goRight, or two animations race.
+        if (follow === 'swipe') {
+          settleSeam(performance.now())
+          return
+        }
+        endSeam()
         if (follow !== 'tap') return
-        runTap(point.x)
+        runTap(point.x, point.y)
       }
       const onTouchCancel = () => endSeam()
-      const runTap = (clientX: number) => {
+      const runTap = (clientX: number, clientY: number) => {
         const article = host.querySelector(':scope > article.read-aloud')
         const speaking = article instanceof HTMLElement && article.dataset.leafSpeaking === '1'
         const frame = doc.defaultView?.frameElement
-        const place = frame instanceof Element
-          ? tapPlace(frame.getBoundingClientRect().left + clientX, frame, tapPage(frame))
+        const box = frame instanceof Element ? frame.getBoundingClientRect() : null
+        const place = box
+          ? tapPlace(box.left + clientX, frame as Element, tapPage(frame as Element), box.top + clientY)
           : 'text'
         const action = gate.click(
           speaking,

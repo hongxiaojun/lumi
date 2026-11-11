@@ -1,4 +1,6 @@
-export const SWIPE_DRAG = 24
+import { GESTURE_SLOP, gestureKind } from 'foliate-js/paginator.js'
+
+export { GESTURE_SLOP }
 
 export type PageSeam = {
   /** Where the page edge crosses the viewport, as a 0–1 fraction. */
@@ -24,9 +26,15 @@ export function pageSeam(moved: number, size: number): PageSeam {
   }
 }
 
-/** Scroll mode follows the finger. Page mode only swipes past a short drag. */
-export function touchFollows(flow: string, moved: number): 'scroll' | 'swipe' | 'tap' {
+/**
+ * Scroll mode follows the finger. A page turn starts only after the finger
+ * leaves the tap box and the drag is horizontal. A vertical drag is not a tap,
+ * so a corner press that slips downward does not also turn the page.
+ */
+export function touchFollows(flow: string, dx: number, dy = 0): 'scroll' | 'swipe' | 'tap' {
   if (flow === 'scrolled') return 'scroll'
-  if (moved >= SWIPE_DRAG) return 'swipe'
+  const kind = gestureKind(dx, dy)
+  if (kind === 'horizontal') return 'swipe'
+  if (kind === 'other') return 'scroll'
   return 'tap'
 }

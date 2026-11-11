@@ -974,10 +974,10 @@ describe('bookClickGate', () => {
   it('does not page or open tools when the pointer moved', () => {
     const gate = bookClickGate()
     gate.down(false, 100, 100)
-    gate.up('', 112, 100)
+    gate.up('', 124, 100)
     expect(gate.click(true, '', 'right')).toBe('stay')
     gate.down(false, 0, 0)
-    gate.up('', 8, 8)
+    gate.up('', 16, 16)
     expect(gate.click(false, '', 'text')).toBe('stay')
     gate.down(false, 100, 100)
     gate.up('', 110, 100)

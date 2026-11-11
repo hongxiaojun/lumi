@@ -2,13 +2,21 @@
 // the visible page into place. A tap has to be measured on that page, or the
 // middle of the screen is read as the left or right of the whole chapter.
 //
-// The page turn lives on the side margin, the way Apple Books does. A wide
-// window already has that blank margin. A narrow window keeps a 48px strip
-// from the screen edge so a thumb still has somewhere to turn, and the rest
-// of the line opens the tools. A pointer that travels is not a tap.
+// A wide window turns on the blank side margin, the way Apple Books does.
+// A narrow window turns on the bottom corners, where the thumb rests: about
+// 30% of the width and the lower third of the page. The middle of that band,
+// and the rest of the page, open the tools. A finger that stays inside the
+// gesture box is still a tap.
+
+import { GESTURE_SLOP } from './pageCurl'
 
 export const TAP_EDGE = 48
-export const TAP_SLOP = 10
+export const TAP_SLOP = GESTURE_SLOP
+export const CORNER_WIDTH = 0.3
+export const CORNER_HEIGHT = 0.34
+const CORNER_MIN_W = 96
+const CORNER_MIN_H = 148
+const NARROW_GUTTER = 64
 
 export type TapPlace = 'text' | 'left' | 'right'
 
@@ -39,7 +47,13 @@ function clips(style: CSSStyleDeclaration): boolean {
 
 // `clientX` is in the same viewport as `page`. For a click inside the chapter
 // iframe, add the iframe's left edge first: those events are iframe-local.
-export function tapPlace(clientX: number, frame: Element, page: Element): TapPlace {
+function cornerSize(clip: DOMRect): { width: number; top: number } {
+  const width = Math.min(clip.width * 0.46, Math.max(CORNER_MIN_W, clip.width * CORNER_WIDTH))
+  const height = Math.min(clip.height * 0.5, Math.max(CORNER_MIN_H, clip.height * CORNER_HEIGHT))
+  return { width, top: clip.bottom - height }
+}
+
+export function tapPlace(clientX: number, frame: Element, page: Element, clientY?: number): TapPlace {
   if (!Number.isFinite(clientX)) return 'text'
   const clip = visibleClip(frame, frame.getBoundingClientRect())
   const pageRect = page.getBoundingClientRect()
@@ -47,6 +61,18 @@ export function tapPlace(clientX: number, frame: Element, page: Element): TapPla
   if (!(width > 0) || !(pageRect.right > pageRect.left)) return 'text'
   const leftGutter = Math.max(0, clip.left - pageRect.left)
   const rightGutter = Math.max(0, pageRect.right - clip.right)
+  if (clientX < clip.left && clientX >= pageRect.left) return 'left'
+  if (clientX > clip.right && clientX <= pageRect.right) return 'right'
+  const narrow = leftGutter < NARROW_GUTTER && rightGutter < NARROW_GUTTER
+  if (narrow && Number.isFinite(clientY)) {
+    const y = clientY as number
+    if (y < clip.top || y > clip.bottom + 36) return 'text'
+    const corner = cornerSize(clip)
+    if (y < corner.top) return 'text'
+    if (clientX < clip.left + corner.width) return 'left'
+    if (clientX > clip.right - corner.width) return 'right'
+    return 'text'
+  }
   const leftEdge = clip.left + Math.max(0, TAP_EDGE - leftGutter)
   const rightEdge = clip.right - Math.max(0, TAP_EDGE - rightGutter)
   if (!(rightEdge > leftEdge)) return 'text'
@@ -94,11 +120,11 @@ export function bindMarginTap(page: Element, read: {
     moved = false
     touch = point.pointerType === 'touch'
   }
-  const act = (clientX: number, target: EventTarget | null) => {
+  const act = (clientX: number, clientY: number, target: EventTarget | null) => {
     if (moved || tapClaims(target)) return
     const frame = read.frame()
     if (!frame) return
-    const place = tapPlace(clientX, frame, page)
+    const place = tapPlace(clientX, frame, page, clientY)
     if (place === 'left' || place === 'right') read.turn(place)
     else read.chrome()
   }
@@ -106,11 +132,12 @@ export function bindMarginTap(page: Element, read: {
     const point = ev as PointerEvent
     moved = Math.hypot(point.clientX - x, point.clientY - y) > TAP_SLOP
     // A finger on iOS often never produces click after the page moves.
-    if (touch) act(point.clientX, ev.target)
+    if (touch) act(point.clientX, point.clientY, ev.target)
   }
   const click = (ev: Event) => {
     if (touch) return
-    act((ev as MouseEvent).clientX, ev.target)
+    const point = ev as MouseEvent
+    act(point.clientX, point.clientY, ev.target)
   }
   page.addEventListener('pointerdown', down)
   page.addEventListener('pointerup', up)

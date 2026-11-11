@@ -28,6 +28,12 @@ declare module 'foliate-js/epubcfi.js' {
   }
 }
 
+declare module 'foliate-js/paginator.js' {
+  export const GESTURE_SLOP: number
+  export function gestureKind(dx: number, dy: number): 'tap' | 'horizontal' | 'other'
+  export function snapBoost(travel: number, speed: number, size: number, rtl: boolean): number
+}
+
 declare module 'foliate-js/overlayer.js' {
   export class Overlayer {
     static highlight(rects: DOMRectList, options?: { color?: string }): SVGElement

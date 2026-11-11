@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { pageSeam, touchFollows } from './pageCurl'
+import { snapBoost } from 'foliate-js/paginator.js'
+import { GESTURE_SLOP, pageSeam, touchFollows } from './pageCurl'
 
 describe('pageSeam', () => {
   it('moves the next page edge from the right and the previous from the left', () => {
@@ -21,6 +22,31 @@ describe('touchFollows', () => {
   it('lets a scrolled book follow the finger and a page book swipe', () => {
     expect(touchFollows('scrolled', 0)).toBe('scroll')
     expect(touchFollows('paginated', 8)).toBe('tap')
-    expect(touchFollows('paginated', 40)).toBe('swipe')
+    expect(touchFollows('paginated', GESTURE_SLOP - 1, 4)).toBe('tap')
+    expect(touchFollows('paginated', 40, 4)).toBe('swipe')
+    expect(touchFollows('paginated', 6, 40)).toBe('scroll')
+  })
+})
+
+describe('snapBoost', () => {
+  const size = 400
+
+  it('turns after a short drag or a flick, and springs back before that', () => {
+    expect(snapBoost(size * 0.28, 0, size, false)).toBe(size / 2 + 1)
+    expect(snapBoost(size * 0.2, 0, size, false)).toBe(0)
+    expect(snapBoost(10, 0.35, size, false)).toBe(size / 2 + 1)
+    expect(snapBoost(10, 0.2, size, false)).toBe(0)
+    expect(snapBoost(-size * 0.28, 0, size, false)).toBe(-(size / 2 + 1))
+    expect(snapBoost(0, -0.35, size, false)).toBe(-(size / 2 + 1))
+  })
+
+  it('flips only the flick direction for a right-to-left book', () => {
+    expect(snapBoost(0, 0.35, size, true)).toBe(-(size / 2 + 1))
+    expect(snapBoost(size * 0.28, 0, size, true)).toBe(size / 2 + 1)
+  })
+
+  it('stays put when the page size is missing', () => {
+    expect(snapBoost(40, 1, 0, false)).toBe(0)
+    expect(snapBoost(Number.NaN, Number.NaN, size, false)).toBe(0)
   })
 })

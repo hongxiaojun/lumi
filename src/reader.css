@@ -205,8 +205,9 @@
   top: env(safe-area-inset-top);
   bottom: env(safe-area-inset-bottom);
 }
-/* The page slides under the finger; a thin shade marks the moving page edge.
-   Rotating the chapter iframe in 3D makes WebKit re-rasterize every page. */
+/* The page slides under the finger. A short shadow sits on the moving edge
+   and stays through the settle. Rotating the chapter iframe in 3D makes
+   WebKit re-rasterize every page. */
 .reader-stage::after {
   content: "";
   position: absolute;
@@ -216,12 +217,19 @@
   opacity: var(--leaf-shade, 0);
   background: linear-gradient(
     90deg,
-    transparent calc(var(--leaf-seam, 50%) - 9%),
-    color-mix(in srgb, var(--reader-fg) 8%, transparent) calc(var(--leaf-seam, 50%) - 1%),
-    color-mix(in srgb, var(--reader-fg) 18%, transparent) var(--leaf-seam, 50%),
-    transparent calc(var(--leaf-seam, 50%) + 6%)
+    transparent var(--leaf-seam, 50%),
+    color-mix(in srgb, var(--reader-fg) 34%, transparent) calc(var(--leaf-seam, 50%) + 8px),
+    transparent calc(var(--leaf-seam, 50%) + 28px)
   );
-  transition: opacity 180ms ease-out;
+  transition: opacity 160ms ease-out;
+}
+.reader-stage[data-leaf-turn="prev"]::after {
+  background: linear-gradient(
+    90deg,
+    transparent calc(var(--leaf-seam, 50%) - 28px),
+    color-mix(in srgb, var(--reader-fg) 34%, transparent) calc(var(--leaf-seam, 50%) - 8px),
+    transparent var(--leaf-seam, 50%)
+  );
 }
 .reader-stage[data-turning="1"]::after {
   transition: none;
