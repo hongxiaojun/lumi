@@ -4,6 +4,8 @@ import type { Annotation } from '../lib/notes'
 import type { Bookmark } from '../lib/bookmarks'
 import { createBookmark, isCurrentBookmark } from '../lib/bookmarks'
 import { saveTtsPosition } from '../lib/db'
+import { armSleep, bindSleepPause } from '../lib/tts/sleepTimer'
+import type { ListenChrome } from '../lib/tts/listenChrome'
 import { clampFraction } from '../lib/format'
 import { resolveParallel } from '../lib/translate/lang'
 import { collectSearchYield, isBlankQuery, type SearchHit } from '../lib/searchHits'
@@ -100,6 +102,20 @@ export function Reader({
   bindListenToggle?.(listen.toggle)
   const listenRef = useRef(listen)
   listenRef.current = listen
+  const listenWasActive = useRef(false)
+  useEffect(() => {
+    bindSleepPause(() => listenRef.current.pause())
+    return () => bindSleepPause(null)
+  }, [])
+  useEffect(() => {
+    if (listen.active) {
+      listenWasActive.current = true
+      return
+    }
+    if (!listenWasActive.current) return
+    listenWasActive.current = false
+    armSleep(null)
+  }, [listen.active])
   const lockArt = useRef<LockArtwork[]>([])
   const quietProgressUntil = useRef(0)
   const [status, setStatusText] = useState<string | null>(null)
@@ -111,6 +127,7 @@ export function Reader({
   const hintTimer = useRef<number | null>(null)
   const searchGen = useRef(0)
   const [showHint, setShowHint] = useState(true)
+  const [listenChrome, setListenChrome] = useState<ListenChrome>('open')
   const [sidebarWanted, setSidebarWanted] = useState(SIDEBAR_DEFAULT)
   const [viewport, setViewport] = useState(() => window.innerWidth)
   const [kbInset, setKbInset] = useState(0)
@@ -385,6 +402,7 @@ export function Reader({
     }
     closePanels()
     setPinned(false)
+    setListenChrome('open')
     startListening(loc.range ?? null)
   }
 
@@ -514,7 +532,13 @@ export function Reader({
         />
       )}
 
-      <div className={['reader-main', footShown ? 'foot' : '', listen.active ? 'listening' : ''].filter(Boolean).join(' ')}>
+      <div className={[
+        'reader-main',
+        footShown ? 'foot' : '',
+        listen.active ? 'listening' : '',
+        listen.active && listenChrome === 'mini' ? 'listening-mini' : '',
+        listen.active && listenChrome === 'hidden' ? 'listening-hidden' : '',
+      ].filter(Boolean).join(' ')}>
         <FoliateHost
           file={file}
           listening={listening}
@@ -595,9 +619,10 @@ export function Reader({
           <ListenBar
             view={listen}
             rate={tts.rate}
+            chrome={listenChrome}
+            onChrome={setListenChrome}
             onRate={(rate) => onTts({ rate })}
             onVoice={() => setVoiceOpen(true)}
-            onStop={stopListening}
           />
         )}
       </div>

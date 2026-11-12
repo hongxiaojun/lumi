@@ -84,6 +84,7 @@ import { DEFAULT_SECRETS } from './lib/translate/engines'
 import { Library } from './components/Library'
 import { Reader } from './components/Reader'
 import { useReadingClock } from './components/useReadingClock'
+import { startSleepAlarm } from './lib/tts/sleepTimer'
 import { rememberFinished } from './lib/homeReading'
 import { readingPlace } from './lib/format'
 
@@ -119,6 +120,7 @@ export default function App() {
     listenToggle.current = toggle
   }, [])
   useReadingClock(Boolean(current) && (!playerListen || locateBook))
+  useEffect(() => startSleepAlarm(), [])
   useEffect(() => {
     const media = window.matchMedia('(max-width: 719px)')
     const onChange = () => setNarrowShelf(media.matches)

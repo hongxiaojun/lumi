@@ -1,14 +1,17 @@
 import { useState, type ReactNode } from 'react'
 import type { ReadAloudView } from './useReadAloud'
 import { rateChoices, rateLabel } from '../lib/tts/config'
+import { nextListenChrome, type ListenChrome } from '../lib/tts/listenChrome'
 import { SKIP_SECONDS } from '../lib/tts/transport'
+import { SleepTimer } from './SleepTimer'
 
 type Props = {
   view: ReadAloudView
   rate: number
+  chrome: ListenChrome
+  onChrome: (next: ListenChrome) => void
   onRate: (rate: number) => void
   onVoice: () => void
-  onStop: () => void
 }
 
 const USUAL = new Set([1.25, 2])
@@ -52,6 +55,15 @@ function CloseIcon() {
   )
 }
 
+function Chevron({ direction }: { direction: 'up' | 'down' }) {
+  const d = direction === 'down' ? 'M6 9.5 12 15.5 18 9.5' : 'M6 14.5 12 8.5 18 14.5'
+  return (
+    <Glyph>
+      <path {...stroke} d={d} />
+    </Glyph>
+  )
+}
+
 function statusText(view: ReadAloudView): string {
   if (view.phase === 'error') return view.error ?? '朗读没有出声'
   if (view.phase === 'done') return view.error ?? '这一章读完了'
@@ -61,15 +73,57 @@ function statusText(view: ReadAloudView): string {
   return '正在朗读'
 }
 
-export function ListenBar({ view, rate, onRate, onVoice, onStop }: Props) {
+export function ListenBar({ view, rate, chrome, onChrome, onRate, onVoice }: Props) {
   const playing = view.phase === 'playing' || view.phase === 'loading'
   const [ratesOpen, setRatesOpen] = useState(false)
   const choices = rateChoices(rate)
+  const status = statusText(view)
+
+  function act(action: 'collapse' | 'close' | 'expand') {
+    setRatesOpen(false)
+    onChrome(nextListenChrome(chrome, action))
+  }
+
+  if (chrome === 'hidden') {
+    return (
+      <div className="listen-bar listen-chrome listen-hidden" role="region" aria-label="朗读">
+        <button type="button" aria-expanded={false} aria-label="展开播放控件" onClick={() => act('expand')}>
+          <span>{status}</span>
+          <Chevron direction="up" />
+        </button>
+      </div>
+    )
+  }
+
+  if (chrome === 'mini') {
+    return (
+      <div className="listen-bar listen-chrome listen-mini" role="region" aria-label="朗读">
+        <button type="button" className="listen-copy" aria-label="展开播放控件" onClick={() => act('expand')}>
+          <span className="listen-kicker">{status}</span>
+          <span className="listen-text">{view.text}</span>
+        </button>
+        <button
+          type="button"
+          className="listen-play"
+          aria-label={playing ? '暂停朗读' : '继续朗读'}
+          onClick={view.toggle}
+        >
+          <PlayIcon playing={playing} />
+        </button>
+        <button type="button" aria-label="展开播放控件" onClick={() => act('expand')}>
+          <Chevron direction="up" />
+        </button>
+        <button type="button" className="listen-close" aria-label="关闭播放控件" onClick={() => act('close')}>
+          <CloseIcon />
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <div className="listen-bar" role="region" aria-label="朗读">
+    <div className="listen-bar listen-chrome" role="region" aria-label="朗读">
       <div className="listen-copy">
-        <span className="listen-kicker">{statusText(view)}</span>
+        <span className="listen-kicker">{status}</span>
         <span className="listen-text">{view.text}</span>
       </div>
       {ratesOpen ? (
@@ -102,6 +156,7 @@ export function ListenBar({ view, rate, onRate, onVoice, onStop }: Props) {
         <button type="button" aria-label="下一分段" onClick={() => view.segment(1)}>下一分段</button>
       </div>
       <div className="listen-controls">
+        <SleepTimer compact />
         <button
           type="button"
           className="listen-rate"
@@ -114,7 +169,10 @@ export function ListenBar({ view, rate, onRate, onVoice, onStop }: Props) {
         <button type="button" className="listen-voice" aria-label="朗读设置" onClick={onVoice}>
           Aa
         </button>
-        <button type="button" className="listen-close" aria-label="退出朗读" onClick={onStop}>
+        <button type="button" className="listen-fold" aria-label="收起播放控件" onClick={() => act('collapse')}>
+          <Chevron direction="down" />
+        </button>
+        <button type="button" className="listen-close" aria-label="关闭播放控件" onClick={() => act('close')}>
           <CloseIcon />
         </button>
       </div>

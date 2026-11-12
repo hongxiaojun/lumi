@@ -20,6 +20,8 @@ export type ReadAloudView = {
   error: string | null
   start: (range?: Range | null) => void
   stop: () => void
+  /** Pause if speech is running. Does not resume and does not leave listen mode. */
+  pause: () => void
   toggle: () => void
   /** -1 is the previous paragraph, 1 is the next paragraph. */
   segment: (direction: -1 | 1) => void
@@ -203,6 +205,12 @@ export function useReadAloud({
     setUi(IDLE)
   }, [clearRetry])
 
+  const pause = useCallback(() => {
+    const player = playerRef.current
+    if (!activeRef.current || !player) return
+    if (player.state === 'playing' || player.state === 'loading') player.pause()
+  }, [])
+
   const toggle = useCallback(() => {
     const player = playerRef.current
     if (!activeRef.current || !player) {
@@ -284,5 +292,5 @@ export function useReadAloud({
     currentRef.current?.chapter.clear()
   }, [clearRetry])
 
-  return { ...ui, start, stop, toggle, segment, skip, go, repaint, place }
+  return { ...ui, start, stop, pause, toggle, segment, skip, go, repaint, place }
 }

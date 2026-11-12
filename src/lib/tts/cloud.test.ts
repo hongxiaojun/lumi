@@ -241,6 +241,25 @@ describe('prefetchSpeech (cross-chapter)', () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
   })
 
+  it('keeps a cloud clip on the phone so AirPlay carries the sound instead of the blob address', async () => {
+    const fetchMock = vi.fn(async () => okAudio())
+    vi.stubGlobal('fetch', fetchMock)
+    const play = HTMLMediaElement.prototype.play as ReturnType<typeof vi.fn>
+    const before = play.mock.calls.length
+    const handle = cloudSpeaker(config)(unit('隔空这一句。'), handlers())
+    const el = document.querySelector('audio')
+    expect(el?.disableRemotePlayback).toBe(true)
+    expect(el?.dataset.leafRoute).toBe('local-airplay')
+    expect(el?.isConnected).toBe(true)
+    await vi.waitFor(() => expect(play.mock.calls.length).toBe(before + 1))
+    el?.dispatchEvent(new Event('pause'))
+    await vi.waitFor(() => expect(play.mock.calls.length).toBe(before + 2))
+    expect(handle.pause?.()).toBe(true)
+    el?.dispatchEvent(new Event('pause'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(play.mock.calls.length).toBe(before + 2)
+  })
+
   it('seeks inside a loaded clip and reports where it is', async () => {
     let time = 1
     vi.spyOn(HTMLMediaElement.prototype, 'duration', 'get').mockReturnValue(12)

@@ -1,4 +1,5 @@
 import type { SpeechUnit } from './speech'
+import { takeSleepDue } from './sleepTimer'
 import { estimateSpeechSeconds, nextSegmentIndex, previousSegmentIndex, skipBySeconds } from './transport'
 import type { Speaker, SpeakHandle } from './types'
 
@@ -231,6 +232,13 @@ export class SpeechPlayer {
   }
 
   private advance(): void {
+    if (takeSleepDue(this.now())) {
+      if (this.indexValue + 1 < this.units.length) this.indexValue += 1
+      this.pausedByHandle = false
+      this.cancelActive()
+      this.setState('paused')
+      return
+    }
     if (this.indexValue + 1 < this.units.length) {
       this.play(this.indexValue + 1)
       return

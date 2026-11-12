@@ -32,3 +32,5 @@ tempfile = "3"
 
 [patch.crates-io]
 tao = { path = "vendor/tao" }
+# iOS route policy lives in this copy: AirPlay must keep speaking.
+tauri-plugin-tts = { path = "vendor/tauri-plugin-tts" }

@@ -1,6 +1,7 @@
 import type { TtsConfig } from '../../types'
 import { appFetch } from '../appFetch'
 import { clampRate, cleanSecret, DEFAULT_TTS } from './config'
+import { dropLocalRoute, holdLocalRoute, localRouteElement } from './routeAudio'
 import type { SpeakHandle, Speaker } from './types'
 
 export type SpeechRequest = {
@@ -108,7 +109,6 @@ export function errorText(error: unknown): string {
   return String(error)
 }
 
-let audioEl: HTMLAudioElement | null = null
 let prepared = false
 let objectUrl = ''
 
@@ -152,13 +152,7 @@ export async function prefetchSpeech(texts: readonly string[], config: TtsConfig
 }
 
 function audio(): HTMLAudioElement | null {
-  if (typeof document === 'undefined') return null
-  if (!audioEl) {
-    audioEl = document.createElement('audio')
-    audioEl.preload = 'auto'
-    audioEl.setAttribute('playsinline', '')
-  }
-  return audioEl
+  return localRouteElement()
 }
 
 /** Call synchronously from the tap that starts speaking. iOS unlocks playback for this element. */
@@ -179,6 +173,7 @@ export function unlockAudio(): void {
 }
 
 function release(el: HTMLAudioElement): void {
+  dropLocalRoute()
   el.onended = null
   el.onerror = null
   el.onplaying = null
@@ -234,6 +229,7 @@ export function blobSpeaker(
         el.onerror = () => {
           if (!cancelled) handlers.onError(new Error('这段语音没有播放出来'))
         }
+        holdLocalRoute()
         void el.play().then(
           () => start(),
           () => {
@@ -253,11 +249,13 @@ export function blobSpeaker(
       },
       pause() {
         if (cancelled || !el.src) return false
+        dropLocalRoute()
         el.pause()
         return true
       },
       resume() {
         if (cancelled || !el.src) return false
+        holdLocalRoute()
         void el.play().then(
           () => start(),
           () => handlers.onError(new Error('这段语音没有接着播放')),

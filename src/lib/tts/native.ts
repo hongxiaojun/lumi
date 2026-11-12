@@ -16,6 +16,8 @@ const sinks = new Set<(event: SpeechEvent) => void>()
 function plugin(): Promise<TtsModule | null> {
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return Promise.resolve(null)
   cached ??= import('tauri-plugin-tts-api').then(async (mod) => {
+    // speech:pause with route_change is the headphone fallback. AirPlay does not
+    // pause, so resuming here would start the phone speaker after the headphones come out.
     for (const type of ['speech:start', 'speech:finish', 'speech:cancel', 'speech:error'] as const) {
       await mod.onSpeechEvent(type, (event) => {
         const payload: SpeechEvent = { id: event.id, error: event.error, eventType: type }

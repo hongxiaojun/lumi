@@ -110,6 +110,16 @@ describe('nativeSpeaker', () => {
     expect(h.onEnd).not.toHaveBeenCalled()
   })
 
+  it('leaves a route-change pause alone so unplugged headphones do not resume on the speaker', async () => {
+    const speaker = nativeSpeaker(DEFAULT_TTS, 'zh-CN')
+    speaker(UNIT, handlers())
+    await flushed()
+    emitters.get('speech:start')?.({ id: 'utt-1' })
+    emitters.get('speech:pause')?.({ id: 'utt-1', reason: 'route_change' })
+    await flushed()
+    expect(resumeCalls).not.toHaveBeenCalled()
+  })
+
   it('pauses and resumes through the engine on iOS', async () => {
     const speaker = nativeSpeaker(DEFAULT_TTS, 'zh-CN')
     const handle = speaker(UNIT, handlers())

@@ -4,6 +4,7 @@ import { percentLabel, shelfMarks } from '../lib/format'
 import { parseCaption, parseFractionOf } from '../lib/parseGate'
 import { shelfPlayAction, spokenLine, type ShelfPlayback } from '../lib/shelfListen'
 import { rateLabel } from '../lib/tts/config'
+import { SleepTimer } from './SleepTimer'
 
 type Props = {
   books: LibraryBook[]
@@ -91,6 +92,7 @@ export function ListenShelf({ books, parseGates, tts, onListen, onVoice, playbac
               </span>
             </div>
           </div>
+          <div className="listen-play-stack">
           <div className="listen-transport" role="group" aria-label="播放">
             <button
               className="listen-queue-toggle"
@@ -147,6 +149,8 @@ export function ListenShelf({ books, parseGates, tts, onListen, onVoice, playbac
             >
               <Glyph d="M4 9h3l4-3v12l-4-3H4zM16 9.5a3.5 3.5 0 0 1 0 5M18 7a6.5 6.5 0 0 1 0 10" />
             </button>
+          </div>
+          <SleepTimer />
           </div>
           {line && onLocate ? (
             <div className="listen-lyric">
