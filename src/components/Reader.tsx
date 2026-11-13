@@ -12,7 +12,8 @@ import { collectSearchYield, isBlankQuery, type SearchHit } from '../lib/searchH
 import { subscribeOpenFrame } from '../lib/edgeChapter'
 import { clampSidebar, panelPlace, SIDEBAR_DEFAULT, sidebarAfterDrag, sidebarBand, type SidebarSide } from '../lib/readerSplit'
 import { themeForScript, themeOf } from '../lib/styles'
-import { menuShown, pageMenuPinned, pointerHoldsMenu } from '../lib/menuChrome'
+import { menuShown, menusPinnedOnOpen, pageMenuPinned, pointerHoldsMenu } from '../lib/menuChrome'
+import { listenFabMode } from '../lib/tts/listenFab'
 import { keyboardInset } from '../lib/keyboardInset'
 import type { FootLabel } from '../lib/pageFoot'
 import { FoliateHost, type ReaderApi } from './FoliateHost'
@@ -25,6 +26,7 @@ import { SearchPanel } from './SearchPanel'
 import { BookmarkPanel } from './BookmarkPanel'
 import { EngineSheet } from './EngineSheet'
 import { ListenBar } from './ListenBar'
+import { ListenFab } from './ListenFab'
 import type { ShelfPlayback } from '../lib/shelfListen'
 import {
   artworkOf,
@@ -77,7 +79,7 @@ export function Reader({
 }: Props) {
   const [atMenu, setAtMenu] = useState(false)
   const [atFoot, setAtFoot] = useState(false)
-  const [pinned, setPinned] = useState(false)
+  const [pinned, setPinned] = useState(() => menusPinnedOnOpen(window.matchMedia('(hover: none)').matches))
   const [lineFoot, setLineFoot] = useState<FootLabel | null>(null)
   const [tocOpen, setTocOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -343,13 +345,6 @@ export function Reader({
   }, [theme.bg, backstage])
 
   useEffect(() => {
-    if (!pinned || overlay) return
-    if (!window.matchMedia('(hover: none)').matches) return
-    const timer = window.setTimeout(() => setPinned(false), 4000)
-    return () => window.clearTimeout(timer)
-  }, [pinned, overlay])
-
-  useEffect(() => {
     if (!autoListen) {
       autoListenDone.current = false
       return
@@ -395,15 +390,22 @@ export function Reader({
     listen.stop()
   }
 
+  function openListen() {
+    if (listen.active) {
+      setListenChrome('open')
+      return
+    }
+    closePanels()
+    setListenChrome('open')
+    startListening(loc.range ?? null)
+  }
+
   function toggleListen() {
     if (listen.active) {
       stopListening()
       return
     }
-    closePanels()
-    setPinned(false)
-    setListenChrome('open')
-    startListening(loc.range ?? null)
+    openListen()
   }
 
   function showPanel(which: 'toc' | 'notes' | 'marks' | 'search' | 'settings') {
@@ -489,6 +491,7 @@ export function Reader({
   }, [nav])
 
   const splitClass = side === 'left' ? 'reader split-left' : side === 'right' ? 'reader split-right' : 'reader'
+  const fabMode = listenFabMode({ active: listen.active, chrome: listenChrome, phase: listen.phase })
 
   return (
     <div
@@ -625,6 +628,7 @@ export function Reader({
             onVoice={() => setVoiceOpen(true)}
           />
         )}
+        {fabMode !== 'off' && <ListenFab mode={fabMode} onPress={openListen} />}
       </div>
 
       {place === 'column' && side === 'right' && notesOpen && (
@@ -659,14 +663,6 @@ export function Reader({
       {(sheet || (place === 'sheet' && side === 'none' && (tocOpen || searchOpen || marksOpen || notesOpen))) && (
         <div className="dim" onClick={() => closePanels()} />
       )}
-      <button
-        type="button"
-        className={shown ? 'reader-back covered' : 'reader-back'}
-        aria-label="返回书架"
-        onClick={onBack}
-      >
-        返回
-      </button>
       <BookMenu
         title={book.title}
         shown={shown}

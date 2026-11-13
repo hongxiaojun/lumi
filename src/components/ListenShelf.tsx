@@ -70,8 +70,15 @@ export function ListenShelf({ books, parseGates, tts, onListen, onVoice, playbac
       {now && marks ? (
         <div className="listen-stage">
           <div className="listen-cover-slot">
-            <div className="listen-cover">
-              {src ? <img src={src} alt="" /> : <div className="listen-cover-fallback">{now.title}</div>}
+            <div className="listen-spread">
+              <div className="listen-spread-page">
+                <div className="listen-cover">
+                  {src ? <img src={src} alt="" /> : <div className="listen-cover-fallback">{now.title}</div>}
+                </div>
+              </div>
+              <div className="listen-spread-page">
+                <p className="listen-words">{line || '开始朗读后，句子出现在这一页'}</p>
+              </div>
             </div>
           </div>
           <div className="listen-body">
@@ -114,6 +121,7 @@ export function ListenShelf({ books, parseGates, tts, onListen, onVoice, playbac
                 <path d="M6.5 6v12" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
               </svg>
             </button>
+            <SleepTimer inline />
             <button
               className="listen-play"
               type="button"
@@ -130,6 +138,22 @@ export function ListenShelf({ books, parseGates, tts, onListen, onVoice, playbac
                   <path fill="currentColor" d="M8 5.2 18.6 12 8 18.8z" />
                 </svg>
               )}
+            </button>
+            <button
+              type="button"
+              aria-label="定位原文"
+              disabled={!onLocate}
+              onClick={onLocate}
+            >
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                <path
+                  d="M4 5.5h6.2A2.3 2.3 0 0 1 12.5 7.8V19A2.2 2.2 0 0 0 10.2 17.4H4zM20 5.5h-6.2A2.3 2.3 0 0 0 11.5 7.8V19a2.2 2.2 0 0 1 2.3-1.6H20z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </button>
             <button
               type="button"
@@ -150,14 +174,7 @@ export function ListenShelf({ books, parseGates, tts, onListen, onVoice, playbac
               <Glyph d="M4 9h3l4-3v12l-4-3H4zM16 9.5a3.5 3.5 0 0 1 0 5M18 7a6.5 6.5 0 0 1 0 10" />
             </button>
           </div>
-          <SleepTimer />
           </div>
-          {line && onLocate ? (
-            <div className="listen-lyric">
-              <p>{line}</p>
-              <button type="button" onClick={onLocate}>定位全文</button>
-            </div>
-          ) : null}
           </div>
           <div className={listOpen ? 'listen-queue open' : 'listen-queue'}>
               <h2>朗读记录</h2>

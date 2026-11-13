@@ -26,8 +26,17 @@ function useSleepClock(): { clock: SleepClock; now: number } {
   return { clock, now }
 }
 
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M12 8v4.5l2.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 /** Sleep timer for the listen bar and the shelf player. One shared deadline. */
-export function SleepTimer({ compact = false }: { compact?: boolean }) {
+export function SleepTimer({ compact = false, inline = false }: { compact?: boolean; inline?: boolean }) {
   const { clock, now } = useSleepClock()
   const [open, setOpen] = useState(false)
   const armed = clock.deadline !== null
@@ -37,7 +46,7 @@ export function SleepTimer({ compact = false }: { compact?: boolean }) {
     : (compact ? '定时' : '定时关闭')
 
   return (
-    <div className={compact ? 'listen-sleep listen-sleep-bar' : 'listen-sleep listen-sleep-shelf'}>
+    <div className={inline ? 'listen-sleep listen-sleep-inline' : compact ? 'listen-sleep listen-sleep-bar' : 'listen-sleep listen-sleep-shelf'}>
       {open ? (
         <div className="listen-sleep-choices" role="group" aria-label="睡眠定时">
           <button
@@ -73,7 +82,7 @@ export function SleepTimer({ compact = false }: { compact?: boolean }) {
         aria-label={armed ? `定时关闭，还剩 ${sleepRemainingLabel(sleepRemaining(clock.deadline, now))}` : '定时关闭'}
         onClick={() => setOpen((value) => !value)}
       >
-        {label}
+        {inline ? <ClockIcon /> : label}
       </button>
     </div>
   )

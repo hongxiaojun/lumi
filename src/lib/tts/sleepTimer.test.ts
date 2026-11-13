@@ -34,12 +34,12 @@ describe('sleep choices', () => {
     expect(isSleepMinutes(Number.NaN)).toBe(false)
   })
 
-  it('labels an hour as 1 小时 and the others in minutes', () => {
-    expect(sleepChoiceLabel(15)).toBe('15 分钟')
-    expect(sleepChoiceLabel(30)).toBe('30 分钟')
-    expect(sleepChoiceLabel(45)).toBe('45 分钟')
-    expect(sleepChoiceLabel(60)).toBe('1 小时')
-    expect(sleepChoiceLabel(90)).toBe('90 分钟')
+  it('labels an hour as 1 h and the others in minutes', () => {
+    expect(sleepChoiceLabel(15)).toBe('15 min')
+    expect(sleepChoiceLabel(30)).toBe('30 min')
+    expect(sleepChoiceLabel(45)).toBe('45 min')
+    expect(sleepChoiceLabel(60)).toBe('1 h')
+    expect(sleepChoiceLabel(90)).toBe('90 min')
   })
 })
 

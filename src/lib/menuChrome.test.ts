@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { layerOpeningClick, menuPress, menuShown, pageMenuPinned, pointerHoldsMenu } from './menuChrome'
+import { layerOpeningClick, menuPress, menuShown, menusPinnedOnOpen, pageMenuPinned, pointerHoldsMenu } from './menuChrome'
+
+describe('menusPinnedOnOpen', () => {
+  it('starts a touch reader with the menus up and leaves a mouse reader alone', () => {
+    expect(menusPinnedOnOpen(true)).toBe(true)
+    expect(menusPinnedOnOpen(false)).toBe(false)
+  })
+})
 
 describe('menuShown', () => {
   it('stays hidden until the pointer, a pin, or an open panel asks for it', () => {

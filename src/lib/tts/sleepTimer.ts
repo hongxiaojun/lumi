@@ -20,8 +20,8 @@ export function isSleepMinutes(value: number): value is SleepMinutes {
 }
 
 export function sleepChoiceLabel(minutes: SleepMinutes): string {
-  if (minutes === 60) return '1 小时'
-  return `${minutes} 分钟`
+  if (minutes === 60) return '1 h'
+  return `${minutes} min`
 }
 
 export function sleepRemaining(deadline: number | null, now: number): number {

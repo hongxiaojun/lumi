@@ -9,6 +9,11 @@ export function menuShown(state: MenuVisibility): boolean {
   return state.pointer || state.pinned || state.panel
 }
 
+/** A touch reader opens with the menus up. The next tap hides them. A mouse does not. */
+export function menusPinnedOnOpen(coarse: boolean): boolean {
+  return coarse
+}
+
 /**
  * A tap on the page text. A mouse never raises the bar. A touch toggles it,
  * and a tap that closes a panel also puts the bar away.

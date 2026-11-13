@@ -1,9 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { ReadAloudView } from './useReadAloud'
-import { rateChoices, rateLabel } from '../lib/tts/config'
 import { nextListenChrome, type ListenChrome } from '../lib/tts/listenChrome'
-import { SKIP_SECONDS } from '../lib/tts/transport'
-import { SleepTimer } from './SleepTimer'
+import { ListenSheet } from './ListenSheet'
 
 type Props = {
   view: ReadAloudView
@@ -13,8 +11,6 @@ type Props = {
   onRate: (rate: number) => void
   onVoice: () => void
 }
-
-const USUAL = new Set([1.25, 2])
 
 const stroke = {
   fill: 'none',
@@ -75,25 +71,13 @@ function statusText(view: ReadAloudView): string {
 
 export function ListenBar({ view, rate, chrome, onChrome, onRate, onVoice }: Props) {
   const playing = view.phase === 'playing' || view.phase === 'loading'
-  const [ratesOpen, setRatesOpen] = useState(false)
-  const choices = rateChoices(rate)
   const status = statusText(view)
 
   function act(action: 'collapse' | 'close' | 'expand') {
-    setRatesOpen(false)
     onChrome(nextListenChrome(chrome, action))
   }
 
-  if (chrome === 'hidden') {
-    return (
-      <div className="listen-bar listen-chrome listen-hidden" role="region" aria-label="朗读">
-        <button type="button" aria-expanded={false} aria-label="展开播放控件" onClick={() => act('expand')}>
-          <span>{status}</span>
-          <Chevron direction="up" />
-        </button>
-      </div>
-    )
-  }
+  if (chrome === 'hidden') return null
 
   if (chrome === 'mini') {
     return (
@@ -121,61 +105,13 @@ export function ListenBar({ view, rate, chrome, onChrome, onRate, onVoice }: Pro
   }
 
   return (
-    <div className="listen-bar listen-chrome" role="region" aria-label="朗读">
-      <div className="listen-copy">
-        <span className="listen-kicker">{status}</span>
-        <span className="listen-text">{view.text}</span>
-      </div>
-      {ratesOpen ? (
-        <div className="listen-rates" role="group" aria-label="选择倍速">
-          {choices.map((step) => (
-            <button
-              key={step}
-              type="button"
-              className={USUAL.has(step) ? 'usual' : ''}
-              aria-pressed={Math.abs(step - rate) < 0.001}
-              onClick={() => onRate(step)}
-            >
-              {rateLabel(step)}
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <div className="listen-transport">
-        <button type="button" aria-label="上一分段" onClick={() => view.segment(-1)}>上一分段</button>
-        <button type="button" aria-label="后退 5 秒" onClick={() => view.skip(-SKIP_SECONDS)}>−5秒</button>
-        <button
-          type="button"
-          className="listen-play"
-          aria-label={playing ? '暂停朗读' : '继续朗读'}
-          onClick={view.toggle}
-        >
-          <PlayIcon playing={playing} />
-        </button>
-        <button type="button" aria-label="前进 5 秒" onClick={() => view.skip(SKIP_SECONDS)}>+5秒</button>
-        <button type="button" aria-label="下一分段" onClick={() => view.segment(1)}>下一分段</button>
-      </div>
-      <div className="listen-controls">
-        <SleepTimer compact />
-        <button
-          type="button"
-          className="listen-rate"
-          aria-expanded={ratesOpen}
-          aria-label={`语速 ${rateLabel(rate)}，选择倍速`}
-          onClick={() => setRatesOpen((openRates) => !openRates)}
-        >
-          {rateLabel(rate)}
-        </button>
-        <button type="button" className="listen-voice" aria-label="朗读设置" onClick={onVoice}>
-          Aa
-        </button>
-        <button type="button" className="listen-fold" aria-label="收起播放控件" onClick={() => act('collapse')}>
-          <Chevron direction="down" />
-        </button>
-        <button type="button" className="listen-close" aria-label="关闭播放控件" onClick={() => act('close')}>
-          <CloseIcon />
-        </button>
-      </div>
-    </div>
+    <ListenSheet
+      view={view}
+      rate={rate}
+      onCollapse={() => act('collapse')}
+      onClose={() => act('close')}
+      onRate={onRate}
+      onVoice={onVoice}
+    />
   )
 }
