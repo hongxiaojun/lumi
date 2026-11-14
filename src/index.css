@@ -456,26 +456,39 @@ button:disabled {
 .listen-cover-slot {
   display: grid;
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
   container-type: size;
 }
 .listen-spread {
-  display: flex;
   width: 100%;
   height: 100%;
-  min-height: 0;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
+  min-width: 0;
+  overflow: hidden;
+  /* The page allows pan-x. A sideways finger was scrolling nothing, because this slot is clipped. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
-.listen-spread::-webkit-scrollbar { display: none; }
+.listen-spread * { touch-action: none; }
+.listen-spread-track {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.28s ease;
+}
+.listen-spread[data-page="1"] .listen-spread-track { transform: translate3d(-50%, 0, 0); }
 .listen-spread-page {
-  flex: 0 0 100%;
+  flex: 0 0 50%;
+  width: 50%;
+  min-width: 0;
   display: grid;
   place-items: center;
-  min-width: 0;
-  scroll-snap-align: center;
-  scroll-snap-stop: always;
+}
+@media (prefers-reduced-motion: reduce) {
+  .listen-spread-track { transition: none; }
 }
 .listen-words {
   margin: 0;
@@ -504,7 +517,11 @@ button:disabled {
   width: 100%;
   height: 100%;
 }
-.listen-cover img { object-fit: cover; }
+.listen-cover img {
+  object-fit: cover;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
 .listen-cover-fallback {
   display: flex;
   align-items: flex-end;

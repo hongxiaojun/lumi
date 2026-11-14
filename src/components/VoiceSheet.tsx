@@ -3,10 +3,11 @@ import type { TtsConfig, TtsProvider } from '../types'
 import { azureSpeaker } from '../lib/tts/azure'
 import { cloudSpeaker, unlockAudio } from '../lib/tts/cloud'
 import { clampRate, rateLabel, speechLang } from '../lib/tts/config'
+import { deepseekSpeaker } from '../lib/tts/deepseek'
 import type { SpeechUnit } from '../lib/tts/speech'
 import { systemSpeaker, systemVoices, subscribeSystemVoices, type SystemVoice } from '../lib/tts/system'
-import type { SpeakHandle } from '../lib/tts/types'
-import { AzureFields, CloudFields } from './VoiceFields'
+import type { SpeakHandle, Speaker } from '../lib/tts/types'
+import { AzureFields, CloudFields, DeepSeekFields } from './VoiceFields'
 
 type Props = {
   config: TtsConfig
@@ -56,6 +57,13 @@ export function VoiceSheet({ config, onChange, onClose }: Props) {
     setTesting(false)
   }
 
+  function speakerFor(config: TtsConfig): Speaker {
+    if (config.provider === 'cloud') return cloudSpeaker(config)
+    if (config.provider === 'azure') return azureSpeaker(config)
+    if (config.provider === 'deepseek') return deepseekSpeaker(config)
+    return systemSpeaker(config, speechLang(undefined, SAMPLE.text))
+  }
+
   function test() {
     if (testing) {
       stopTest()
@@ -65,14 +73,7 @@ export function VoiceSheet({ config, onChange, onClose }: Props) {
     setError(null)
     setTesting(true)
     if (config.provider !== 'system') unlockAudio()
-    const lang = speechLang(undefined, SAMPLE.text)
-    const speaker =
-      config.provider === 'cloud'
-        ? cloudSpeaker(config)
-        : config.provider === 'azure'
-          ? azureSpeaker(config)
-          : systemSpeaker(config, lang)
-    handleRef.current = speaker(SAMPLE, {
+    handleRef.current = speakerFor(config)(SAMPLE, {
       onStart: () => setTesting(true),
       onEnd: () => setTesting(false),
       onError: (reason) => {
@@ -98,7 +99,7 @@ export function VoiceSheet({ config, onChange, onClose }: Props) {
 
       <div className="setting">
         <label>声音</label>
-        <p className="field-hint">系统语音离线可用。云端和 Azure 语音联网出声，声音更自然。</p>
+        <p className="field-hint">系统语音离线可用。云端、Azure 和 DeepSeek 语音联网出声，声音更自然。</p>
         <div className="chips">
           <button
             type="button"
@@ -123,6 +124,14 @@ export function VoiceSheet({ config, onChange, onClose }: Props) {
             onClick={() => provider('azure')}
           >
             Azure
+          </button>
+          <button
+            type="button"
+            className={`chip ${config.provider === 'deepseek' ? 'on' : ''}`}
+            aria-pressed={config.provider === 'deepseek'}
+            onClick={() => provider('deepseek')}
+          >
+            DeepSeek
           </button>
         </div>
       </div>
@@ -165,6 +174,8 @@ export function VoiceSheet({ config, onChange, onClose }: Props) {
         </div>
       ) : config.provider === 'azure' ? (
         <AzureFields config={config} patch={patch} />
+      ) : config.provider === 'deepseek' ? (
+        <DeepSeekFields config={config} patch={patch} />
       ) : (
         <CloudFields config={config} patch={patch} />
       )}

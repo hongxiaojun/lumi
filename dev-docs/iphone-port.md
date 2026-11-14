@@ -546,3 +546,9 @@ iPhone 17 实测截图：朗读中正文上方大片空白、当前句不在正�
 同日播放键两侧改成时钟和书的线框图标。装到 iPhone 17（iPhone18,3），序号 3992，bundle `app.leaf.reader`，前端 `index-Bj_doJI7.js`。解压嵌入资源能搜到时钟指针 `M12 8v4.5l2.5 1.5` 和读屏名「定位原文」，压缩块在可执行文件里，没有上一版的 `index-BiFyaE-Y`。安装时手机已解锁。脚本没有拉起应用。图标是否和旁边的播放键对齐，还没在这台手机上看过。视觉验收未完成。桌面版没有换。iPhone Air 这次没有装。
 
 同日同一版装到 iPhone Air（娇娇大美，iPhone18,4）。这台手机自己的安装序号是 1832，bundle `app.leaf.reader`，前端 `index-Bj_doJI7.js`。解压嵌入资源能搜到时钟指针 `M12 8v4.5l2.5 1.5` 和读屏名「定位原文」，压缩块在可执行文件里，没有这台 Air 上一版的 `index-BUoxOiix`。安装时手机已解锁。脚本没有拉起应用。竖屏和横屏、时钟和书的图标，都还没在这台 Air 上看过。视觉验收未完成。桌面版没有换。iPhone 17 这次没有装。
+
+同日勋章样式不变，朗读进行中加波纹。装到 iPhone 17（iPhone18,3），序号 4000，bundle `app.leaf.reader`，前端 `index-6bgqctfP.js`，样式 `index-DzQn3CTq.css`。解压嵌入资源能搜到 `listen-fab-pulse`，压缩块在可执行文件里，没有上一版的 `index-Bj_doJI7`，也没有把勋章改成 `opacity: 0.22`。安装时手机已解锁。脚本没有拉起应用。波纹只在朗读进行中出现，还没在这台手机上看过。视觉验收未完成。桌面版没有换。iPhone Air 这次没有装。
+
+同日没在朗读时勋章变淡，朗读中六边形按勋章颜色向外扩。朗读音量不加增益，保活音频改为 44.1 kHz，会话不再用 spokenAudio。装到 iPhone 17（iPhone18,3），序号 4008，bundle `app.leaf.reader`，前端 `index-BxYhD1Mk.js`，样式 `index-C4tGgfKf.css`。解压样式能搜到 `listen-fab-ripple` 和 `opacity:.28`，压缩块在可执行文件里，没有上一版的 `index-6bgqctfP`。可执行文件里有「Audio session unavailable」，朗读库是在改完音质代码之后重新编的。安装开始时手机锁屏，装完时已解锁。脚本没有拉起应用。声音有没有更清楚，还没在这台手机上听过。视觉和听觉验收都未完成。桌面版没有换。iPhone Air 这次没有装。
+
+2026-11-14 封面左滑。上一版封面格被外层裁掉，横向滚动没有可滚的距离。这一版用手指向左翻到大字句子，向右回到封面。装到 iPhone 17（iPhone18,3），序号 4104，bundle `app.leaf.reader`，前端 `index-DkcdQ3ij.js`，样式 `index-B1Rf9jJc.css`。解压样式能搜到 `listen-spread-track` 和 `.listen-spread{touch-action:none`，翻页是 `translate(-50%)`，压缩块在可执行文件里，没有上一版的 `index-BxYhD1Mk`。安装日志里没有 Locked，脚本没有拉起应用。封面左滑还没在这台手机上看过。视觉验收未完成。桌面版没有换。iPhone Air 这次没有装。

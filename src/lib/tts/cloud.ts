@@ -52,9 +52,25 @@ export function errorHint(detail: string): string {
   const trimmed = detail.replace(/\s+/g, ' ').trim()
   if (!trimmed) return ''
   try {
-    const body = JSON.parse(trimmed) as { message?: unknown; error?: unknown }
+    const body = JSON.parse(trimmed) as {
+      message?: unknown
+      error?: unknown
+      error_message?: unknown
+    }
+    const nested =
+      body.error && typeof body.error === 'object'
+        ? (body.error as { message?: unknown }).message
+        : undefined
     const message =
-      typeof body.message === 'string' ? body.message : typeof body.error === 'string' ? body.error : ''
+      typeof body.message === 'string'
+        ? body.message
+        : typeof body.error === 'string'
+          ? body.error
+          : typeof nested === 'string'
+            ? nested
+            : typeof body.error_message === 'string'
+              ? body.error_message
+              : ''
     if (message.trim()) return message.trim().slice(0, 80)
   } catch {
     // The body is not JSON. Show it as text.
@@ -187,13 +203,15 @@ function release(el: HTMLAudioElement): void {
 }
 
 /**
- * Blob playback shared by the cloud and Azure speakers: one audio element,
- * fetch the current sentence, warm the upcoming ones through the provider's
- * own cache. `fetchOne` rejects with a readable message on failure.
+ * Blob playback shared by the cloud, Azure and DeepSeek speakers: one audio
+ * element, fetch the current sentence, warm the upcoming ones through the
+ * provider's own cache. `fetchOne` rejects with a readable message on failure.
+ * `playbackRate` is for services that cannot speak faster on the server.
  */
 export function blobSpeaker(
   fetchOne: (text: string) => Promise<Blob>,
   warmup?: (texts: readonly string[]) => void,
+  playbackRate = 1,
 ): Speaker {
   return (unit, handlers, upcoming): SpeakHandle => {
     const el = audio()
@@ -220,6 +238,7 @@ export function blobSpeaker(
         if (cancelled) return
         objectUrl = URL.createObjectURL(blob)
         el.src = objectUrl
+        el.playbackRate = playbackRate
         el.onplaying = () => {
           if (!cancelled) start()
         }
@@ -230,6 +249,7 @@ export function blobSpeaker(
           if (!cancelled) handlers.onError(new Error('这段语音没有播放出来'))
         }
         holdLocalRoute()
+        el.volume = 1
         void el.play().then(
           () => start(),
           () => {
@@ -256,6 +276,7 @@ export function blobSpeaker(
       resume() {
         if (cancelled || !el.src) return false
         holdLocalRoute()
+        el.volume = 1
         void el.play().then(
           () => start(),
           () => handlers.onError(new Error('这段语音没有接着播放')),

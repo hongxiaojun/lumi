@@ -12,6 +12,8 @@ export const DEFAULT_TTS: TtsConfig = {
   azureRegion: 'eastasia',
   azureKey: '',
   azureVoice: 'zh-CN-XiaoxiaoNeural',
+  deepseekKey: '',
+  deepseekVoice: 'stella',
   listenLayout: true,
   listenFontSize: 26,
   listenLineHeight: 2.05,
@@ -88,13 +90,16 @@ export function mergeTts(current: TtsConfig, patch: Partial<TtsConfig>): TtsConf
   const next = normalizeTts({ ...current, ...patch })
   if (typeof patch.cloudKey === 'string') next.cloudKey = cleanSecret(patch.cloudKey)
   if (typeof patch.azureKey === 'string') next.azureKey = cleanSecret(patch.azureKey)
+  if (typeof patch.deepseekKey === 'string') next.deepseekKey = cleanSecret(patch.deepseekKey)
   return next
 }
 
 export function normalizeTts(stored: Partial<TtsConfig> | undefined | null): TtsConfig {
   if (!stored) return { ...DEFAULT_TTS }
   const provider =
-    stored.provider === 'cloud' || stored.provider === 'azure' ? stored.provider : 'system'
+    stored.provider === 'cloud' || stored.provider === 'azure' || stored.provider === 'deepseek'
+      ? stored.provider
+      : 'system'
   return {
     ...DEFAULT_TTS,
     ...stored,
@@ -110,6 +115,8 @@ export function normalizeTts(stored: Partial<TtsConfig> | undefined | null): Tts
     azureRegion: textOr(stored.azureRegion, DEFAULT_TTS.azureRegion),
     azureKey: typeof stored.azureKey === 'string' ? stored.azureKey : '',
     azureVoice: textOr(stored.azureVoice, DEFAULT_TTS.azureVoice),
+    deepseekKey: typeof stored.deepseekKey === 'string' ? stored.deepseekKey : '',
+    deepseekVoice: textOr(stored.deepseekVoice, DEFAULT_TTS.deepseekVoice),
     listenLayout: stored.listenLayout !== false,
     listenFontSize: numberOr(stored.listenFontSize, DEFAULT_TTS.listenFontSize, LISTEN_SIZE_MIN, LISTEN_SIZE_MAX),
     listenLineHeight: numberOr(

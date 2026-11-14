@@ -43,17 +43,18 @@ final class AudioSessionController {
     func activate() -> String? {
         do {
             let session = AVAudioSession.sharedInstance()
-            // Long-form playback is what sends spoken audio to an AirPlay receiver.
-            // spokenAudio can refuse that policy on some systems, so the old category remains.
+            // Leave the synthesizer at unity gain. spokenAudio reshapes the voice, and an
+            // 8 kHz keep-alive used to pull the whole session down to phone quality.
+            try? session.setPreferredSampleRate(44_100)
             do {
                 try session.setCategory(
                     .playback,
-                    mode: .spokenAudio,
+                    mode: .default,
                     policy: .longFormAudio,
                     options: [.duckOthers]
                 )
             } catch {
-                try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+                try session.setCategory(.playback, mode: .default, options: [.duckOthers])
             }
             try session.setActive(true)
             return nil
@@ -192,11 +193,12 @@ final class AudioSessionController {
     }
 }
 
-/// 0.2 s of near-silence. A buffer of pure zeros can be dropped before it wakes an AirPlay receiver.
+/// 0.2 s of near-silence at the same rate as speech. A buffer of pure zeros can be
+/// dropped before it wakes an AirPlay receiver. 8 kHz would resample the voice.
 private enum RouteKeeperWav {
     static func make() -> Data {
-        let sampleRate = 8_000
-        let frames = 1_600
+        let sampleRate = 44_100
+        let frames = 8_820
         let dataSize = frames * 2
         var data = Data(capacity: 44 + dataSize)
 
@@ -226,7 +228,7 @@ private enum RouteKeeperWav {
         ascii("data")
         u32(UInt32(dataSize))
         for index in 0..<frames {
-            var sample = Int16(index % 40 == 0 ? 2 : 0).littleEndian
+            var sample = Int16(index % 220 == 0 ? 2 : 0).littleEndian
             withUnsafeBytes(of: &sample) { data.append(contentsOf: $0) }
         }
         return data

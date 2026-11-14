@@ -4,6 +4,7 @@ import { percentLabel, shelfMarks } from '../lib/format'
 import { parseCaption, parseFractionOf } from '../lib/parseGate'
 import { shelfPlayAction, spokenLine, type ShelfPlayback } from '../lib/shelfListen'
 import { rateLabel } from '../lib/tts/config'
+import { CoverSpread } from './CoverSpread'
 import { SleepTimer } from './SleepTimer'
 
 type Props = {
@@ -33,6 +34,7 @@ function coverSrc(book: LibraryBook): string | null {
 function providerName(tts: TtsConfig): string {
   if (tts.provider === 'cloud') return '云端'
   if (tts.provider === 'azure') return 'Azure'
+  if (tts.provider === 'deepseek') return 'DeepSeek'
   return '系统'
 }
 
@@ -70,16 +72,7 @@ export function ListenShelf({ books, parseGates, tts, onListen, onVoice, playbac
       {now && marks ? (
         <div className="listen-stage">
           <div className="listen-cover-slot">
-            <div className="listen-spread">
-              <div className="listen-spread-page">
-                <div className="listen-cover">
-                  {src ? <img src={src} alt="" /> : <div className="listen-cover-fallback">{now.title}</div>}
-                </div>
-              </div>
-              <div className="listen-spread-page">
-                <p className="listen-words">{line || '开始朗读后，句子出现在这一页'}</p>
-              </div>
-            </div>
+            <CoverSpread key={now.id} title={now.title} src={src} line={line} />
           </div>
           <div className="listen-body">
           <div className="listen-now">

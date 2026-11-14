@@ -57,7 +57,7 @@ export type TranslatorConfig = {
   secrets: TranslatorSecrets
 }
 
-export type TtsProvider = 'system' | 'cloud' | 'azure'
+export type TtsProvider = 'system' | 'cloud' | 'azure' | 'deepseek'
 
 export type TtsConfig = {
   provider: TtsProvider
@@ -74,6 +74,9 @@ export type TtsConfig = {
   azureKey: string
   /** Azure neural voice short name, e.g. zh-CN-XiaoxiaoNeural. */
   azureVoice: string
+  deepseekKey: string
+  /** DeepSeek voice id: stella or tide. The language comes from the sentence. */
+  deepseekVoice: string
   /** Natural-language delivery hint for OpenAI-compatible speech services. */
   cloudInstructions: string
   /** Reading typography is replaced by a single-column listening layout while speaking. */

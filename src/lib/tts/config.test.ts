@@ -41,6 +41,17 @@ describe('normalizeTts', () => {
     expect(normalizeTts({ provider: 'nope' as 'system' }).provider).toBe('system')
   })
 
+  it('accepts the deepseek provider and keeps its key and voice', () => {
+    const config = normalizeTts({
+      provider: 'deepseek',
+      deepseekKey: 'ds-key',
+      deepseekVoice: ' ',
+    })
+    expect(config.provider).toBe('deepseek')
+    expect(config.deepseekKey).toBe('ds-key')
+    expect(config.deepseekVoice).toBe(DEFAULT_TTS.deepseekVoice)
+  })
+
   it('keeps listening typography independent of the reading prefs', () => {
     const config = normalizeTts({ listenFontSize: 999, listenLineHeight: 0.5, immersive: false })
     expect(config.listenFontSize).toBe(34)

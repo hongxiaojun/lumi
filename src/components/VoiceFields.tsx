@@ -213,6 +213,48 @@ export function CloudFields({ config, patch }: Props) {
   )
 }
 
+/** Fields for DeepSeek's speech tool: one key and its two voices. */
+export function DeepSeekFields({ config, patch }: Props) {
+  return (
+    <>
+      <div className="setting">
+        <label>DeepSeek 密钥</label>
+        <input
+          className="text-input secret-input"
+          type="text"
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          aria-label="DeepSeek 朗读密钥"
+          value={config.deepseekKey}
+          onChange={(event) => patch({ deepseekKey: event.target.value })}
+          onBlur={(event) => {
+            const deepseekKey = cleanSecret(event.currentTarget.value)
+            patch({ deepseekKey })
+          }}
+        />
+        <p className="field-hint">在 DeepSeek 开放平台建一个 API Key。密钥只存在这台设备的 Lumi 里。</p>
+      </div>
+      <div className="setting">
+        <label>DeepSeek 声音</label>
+        <select
+          className="text-input"
+          aria-label="DeepSeek 朗读声音"
+          value={config.deepseekVoice}
+          onChange={(event) => patch({ deepseekVoice: event.target.value })}
+        >
+          <option value="stella">Stella · 女声</option>
+          <option value="tide">Tide · 男声</option>
+        </select>
+        <p className="field-hint">
+          中文、粤语、英文、日文、韩文按句子自动识别，不用选语言。倍速在手机上播放时调，服务本身不支持变速。
+        </p>
+      </div>
+    </>
+  )
+}
+
 /** Fields for Azure Speech: region, key, and a neural voice catalog. */
 export function AzureFields({ config, patch }: Props) {
   const [voices, setVoices] = useState<CatalogOption[] | null>(null)

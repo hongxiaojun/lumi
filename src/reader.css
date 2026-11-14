@@ -595,6 +595,25 @@ foliate-view::part(foot) {
 .listen-fab[data-metal="gold"] .home-medal text { fill: #5c4010; }
 .listen-fab[data-metal="silver"] .home-medal-gloss { opacity: 0.72; }
 .listen-fab[data-metal="gold"] .home-medal-gloss { opacity: 0.5; }
+.listen-fab[data-listen-fab="idle"] { opacity: 0.28; }
+.listen-fab[data-listen-fab="idle"]:active,
+.listen-fab[data-listen-fab="idle"]:focus-visible { opacity: 1; }
+.listen-fab-ripple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  pointer-events: none;
+  animation: listen-fab-pulse 1.6s ease-out infinite;
+}
+@keyframes listen-fab-pulse {
+  from { opacity: 0.9; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(1.55); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .listen-fab-ripple { animation: none; opacity: 0; }
+}
 .reader-main.foot .listen-fab {
   bottom: calc(max(12px, env(safe-area-inset-bottom)) + 122px);
 }

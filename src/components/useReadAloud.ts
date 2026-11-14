@@ -5,6 +5,7 @@ import { azureSpeaker, prefetchAzureSpeech } from '../lib/tts/azure'
 import { cloudSpeaker, prefetchSpeech, unlockAudio } from '../lib/tts/cloud'
 import { createChapterPrefetcher } from '../lib/tts/chapterPrefetch'
 import { speechLang } from '../lib/tts/config'
+import { deepseekSpeaker, prefetchDeepSeekSpeech } from '../lib/tts/deepseek'
 import { SpeechPlayer, type PlaybackState } from '../lib/tts/player'
 import { wordAt, type SpeechUnit } from '../lib/tts/speech'
 import { systemSpeaker } from '../lib/tts/system'
@@ -100,14 +101,16 @@ export function useReadAloud({
     const lang = chapter?.lang ?? speechLang(undefined, unit.text)
     if (config.provider === 'cloud') return cloudSpeaker(config)(unit, handlers, upcoming)
     if (config.provider === 'azure') return azureSpeaker(config)(unit, handlers, upcoming)
+    if (config.provider === 'deepseek') return deepseekSpeaker(config)(unit, handlers, upcoming)
     return systemSpeaker(config, lang)(unit, handlers, upcoming)
   }, [])
 
-  /** Warm the cloud or Azure cache; system voices speak locally, nothing to warm. */
+  /** Warm the cloud, Azure or DeepSeek cache; system voices speak locally, nothing to warm. */
   const warmCache = useCallback((texts: readonly string[]) => {
     const config = ttsRef.current
     if (config.provider === 'cloud') void prefetchSpeech(texts, config)
     if (config.provider === 'azure') void prefetchAzureSpeech(texts, config)
+    if (config.provider === 'deepseek') void prefetchDeepSeekSpeech(texts, config)
   }, [])
 
   const beginChapter = useCallback((chapter: ListenChapter, startAt = 0) => {
