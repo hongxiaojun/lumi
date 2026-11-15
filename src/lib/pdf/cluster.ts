@@ -23,21 +23,25 @@ export const LINE_SPLIT_EM = 1.8
 const LIGATURE = /^(?:ffi|ffl|fi|fl|ff)$/
 
 export function clusterLines(runs: PdfRun[], yTol = 0.35): PdfLine[] {
-  const usable = runs.filter((item) => item.str.length > 0)
-  usable.sort((a, b) => (Math.abs(a.y - b.y) > 0.5 ? b.y - a.y : a.x - b.x))
+  const rows = byBaseline(
+    runs.filter((item) => item.str.length > 0),
+    yTol,
+  )
   const lines: PdfRun[][] = []
-  for (const item of usable) {
-    const last = lines[lines.length - 1]
-    const seed = last?.[0]
-    const prev = last?.[last.length - 1]
-    if (seed && prev && sameLine(seed, prev, item, yTol)) {
-      last.push(item)
-      continue
+  for (const row of rows) {
+    row.sort((a, b) => a.x - b.x)
+    let group: PdfRun[] = []
+    for (const item of row) {
+      const prev = group[group.length - 1]
+      if (prev && !sameLine(prev, item)) {
+        lines.push(group)
+        group = []
+      }
+      group.push(item)
     }
-    lines.push([item])
+    if (group.length) lines.push(group)
   }
   return lines.map((group) => {
-    group.sort((a, b) => a.x - b.x)
     let text = group[0]?.str ?? ''
     for (let i = 1; i < group.length; i += 1) {
       text += joinGap(group[i - 1], group[i]) + group[i].str
@@ -54,17 +58,43 @@ export function clusterLines(runs: PdfRun[], yTol = 0.35): PdfLine[] {
   })
 }
 
+/** Runs bucketed by baseline, top of the page first.
+ *
+ * Bucketing before anything else is what keeps a two-column page readable: the
+ * content stream writes a whole column at a time, so the left column's lines
+ * all arrive before the right column's, and a single pass that trusts arrival
+ * order pairs a line with the wrong neighbour. Each row is anchored on its
+ * first run, which makes the grouping independent of the order runs come in.
+ */
+function byBaseline(runs: PdfRun[], yTol: number): PdfRun[][] {
+  const sorted = [...runs].sort((a, b) => b.y - a.y || a.x - b.x)
+  const rows: PdfRun[][] = []
+  for (const item of sorted) {
+    const row = rows[rows.length - 1]
+    const anchor = row?.[0]
+    if (anchor && Math.abs(item.y - anchor.y) < yTol * Math.max(anchor.h, item.h, 1)) row.push(item)
+    else rows.push([item])
+  }
+  return rows
+}
+
 export function linesToHtml(lines: PdfLine[]): string {
   return lines
     .map((line) => `<p>${escapeHtml(line.text)}</p>`)
     .join('')
 }
 
-function sameLine(seed: PdfRun, prev: PdfRun, next: PdfRun, yTol: number): boolean {
-  const size = Math.max(prev.h, next.h, 1)
-  if (Math.abs(next.y - seed.y) >= yTol * Math.max(seed.h, next.h, 1)) return false
-  // Runs in different columns share a baseline, so the y test alone would glue
-  // the tail of the left column to the head of the right one.
+/** Two runs side by side on one baseline are one line unless the page between
+ * them is wider than a word space.
+ *
+ * The em comes from the smaller of the two runs, not the larger. A section
+ * heading is set a point bigger than the body it interrupts, and measuring the
+ * gutter with the heading's em is what let this page through: 18 pt of gutter
+ * read as 1.79 em against the 10 pt heading, under LINE_SPLIT_EM, so every
+ * heading landed mid-sentence at the head of the column beside it.
+ */
+function sameLine(prev: PdfRun, next: PdfRun): boolean {
+  const size = Math.max(Math.min(prev.h, next.h), 1)
   return next.x - (prev.x + prev.w) <= LINE_SPLIT_EM * size
 }
 

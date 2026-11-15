@@ -71,6 +71,54 @@ describe('clusterLines', () => {
     expect(lines.map((l) => l.text)).toEqual(['left column tail', 'right column head'])
   })
 
+  it('splits the columns when a bigger heading starts the next one', () => {
+    // Page 4 of a two-column journal, measured with pdftotext -bbox: the left
+    // column's last run ends at 288.03 and the right column's heading starts at
+    // 305.97, so the gutter is 17.94 pt. The body is 9 pt but the heading is
+    // 10 pt, and measuring the 17.94 pt with the heading's em gives 1.79 em —
+    // under LINE_SPLIT_EM. That is how "results Comparison" used to appear at
+    // the head of a paragraph mid-sentence.
+    const lines = clusterLines([
+      run('findings', 259.14, 709, 9, 28.89),
+      run('Comparison', 305.97, 709, 10, 50.37),
+    ])
+    expect(lines.map((l) => l.text)).toEqual(['findings', 'Comparison'])
+  })
+
+  it('still joins words inside a column on a page with a gutter', () => {
+    const lines = clusterLines([
+      run('the left column', 48, 500, 9, 120),
+      run('tail', 172, 500, 9, 20),
+      run('Comparison', 306, 500, 9, 50),
+      run('of groups', 360, 500, 9, 45),
+    ])
+    expect(lines.map((l) => l.text)).toEqual(['the left column tail', 'Comparison of groups'])
+  })
+
+  it('groups by baseline even when the columns arrive one after the other', () => {
+    // The content stream writes a whole column at a time, so every left run
+    // comes before any right run. Pairing each run with whichever one happened
+    // to be read last glued the wrong ends together; each row must be found
+    // from the baselines instead.
+    const lines = clusterLines([
+      run('left one', 48, 510, 9, 100),
+      run('left two', 48, 499, 9, 100),
+      run('right one', 306, 510, 9, 100),
+      run('right two', 306, 499, 9, 100),
+    ])
+    expect(lines.map((l) => l.text)).toEqual(['left one', 'right one', 'left two', 'right two'])
+  })
+
+  it('does not treat a word space repeated down the page as a gutter', () => {
+    const lines = clusterLines([
+      run('one', 48, 510, 9, 40),
+      run('two', 92, 510, 9, 40),
+      run('three', 48, 498, 9, 40),
+      run('four', 92, 498, 9, 40),
+    ])
+    expect(lines.map((l) => l.text)).toEqual(['one two', 'three four'])
+  })
+
   it('still joins runs across a normal word gap', () => {
     const lines = clusterLines([
       run('Hello', 72, 500, 12, 40),
