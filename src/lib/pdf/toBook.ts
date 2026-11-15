@@ -55,9 +55,18 @@ export function pdfDisplayTitle(metaTitle: string, fileName: string): string {
   return trimmed
 }
 
+/** Software names a PDF files in its Creator field when no author was filled in. */
+const PRODUCER =
+  /\b(?:arbortext|acrobat|distiller|ghostscript|pdftex|xetex|luatex|latex|indesign|quarkxpress|scribus|framemaker|libreoffice|openoffice|reportlab|wkhtmltopdf|itext|pdf-lib)\b|\bquartz pdfcontext\b|\bskia\/pdf\b|\bmicrosoft\W{0,3}\s(?:word|office|publisher)\b/i
+
 export function pdfDisplayAuthor(metaAuthor: string): string {
   const trimmed = metaAuthor.trim()
-  return trimmed || '未知作者'
+  // extractPdf falls back to Creator when Author is empty, and for most journal
+  // PDFs the Creator is the typesetting software: this book's author read
+  // "Arbortext Advanced Print Publisher 9.1.405/W Unicode" in the library.
+  // Admitting we do not know beats printing a product name as a person.
+  if (!trimmed || PRODUCER.test(trimmed)) return '未知作者'
+  return trimmed
 }
 
 export function pdfToEpubFile(input: {

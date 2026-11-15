@@ -105,6 +105,22 @@ describe('pdfDisplayAuthor', () => {
     expect(pdfDisplayAuthor('李笑来')).toBe('李笑来')
     expect(pdfDisplayAuthor('')).toBe('未知作者')
   })
+
+  it('refuses a typesetting tool that a PDF filed as its Creator', () => {
+    // extractPdf falls back to Creator when Author is empty, and a journal PDF
+    // exported from Arbortext puts "Arbortext Advanced Print Publisher
+    // 9.1.405/W Unicode" there. The library showed that as the book's author.
+    expect(pdfDisplayAuthor('Arbortext Advanced Print Publisher 9.1.405/W Unicode')).toBe('未知作者')
+    expect(pdfDisplayAuthor('Adobe Acrobat 11.0.23')).toBe('未知作者')
+    expect(pdfDisplayAuthor('Microsoft® Word for Microsoft 365')).toBe('未知作者')
+    expect(pdfDisplayAuthor('pdfTeX-1.40.25')).toBe('未知作者')
+    expect(pdfDisplayAuthor('macOS Version 14.0 (Build 23A344) Quartz PDFContext')).toBe('未知作者')
+  })
+
+  it('keeps a person whose name merely looks like software', () => {
+    expect(pdfDisplayAuthor('John TeXeira')).toBe('John TeXeira')
+    expect(pdfDisplayAuthor('陈丹青')).toBe('陈丹青')
+  })
 })
 
 describe('pdfToEpubFile', () => {
