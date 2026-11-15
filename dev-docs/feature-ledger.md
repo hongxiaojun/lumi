@@ -155,7 +155,7 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 | M21 | 英文导入后重排           | 已有 | 去出版商样式、拼硬换行、Newsreader、段距、左标题、素页。连字、字距和连续断词不超过两行由页面绘制，不改原句              |
 | M22 | 对照翻译（当前章 + 预译下一章） | 已有 | 禁止默认全书开翻                                                                |
 | M23 | 每书 AI 书库          | 已有 | `~/.leaf-reader/library/<slug>/`：AI.md、digest、chapters、chunks。导入或首次打开生成 |
-| M24 | 飞牛 NAS Docker     | 部分 | 2026-11-15 已在飞牛真机（x86_64，`10.10.10.8:8080`）跑通：镜像在 NAS 上 build，卷 `lumi-library` 挂 `/vol1/docker/volumes/lumi-library/_data`。从 Mac 核对：`/health` 200、首页 200、`?token=` 302 并下发 HttpOnly cookie、带 cookie POST 200、无凭证 POST 401、`removeSlug: "."` 400、删 `<slug>` 目录 200。卷内 `AI.md` / `chapters/` / `INDEX.md` 落盘，`docker restart` 后仍在。容器里从宿主机访问也走网桥、不算 loopback，所以必须设 `LEAF_TOKEN`。本机没装 `docker compose` 插件，README 给等价的 `docker build` + `docker run`，并写明镜像架构要跟目标机一致。还差：SMB/NFS 网络盘怎么对待（改名、锁、原子写入会丢，不对着网络挂载做扫描）、NAS 开机自启与升级流程。 |
+| M24 | 飞牛 NAS Docker     | 部分 | 2026-11-15 已在飞牛真机（x86_64，`10.10.10.8:8080`）跑通：镜像在 NAS 上 build，卷 `lumi-library` 挂 `/vol1/docker/volumes/lumi-library/_data`。从 Mac 核对：`/health` 200、首页 200、`?token=` 302 并下发 HttpOnly cookie、带 cookie POST 200、无凭证 POST 401、`removeSlug: "."` 400、删 `<slug>` 目录 200。卷内 `AI.md` / `chapters/` / `INDEX.md` 落盘，`docker restart` 后仍在。容器里从宿主机访问也走网桥、不算 loopback，所以必须设 `LEAF_TOKEN`。本机没装 `docker compose` 插件，README 给等价的 `docker build` + `docker run`，并写明镜像架构要跟目标机一致。重部署走 `scripts/deploy-nas.sh`（rsync → NAS 上 build → 换容器 → 查 `/health` → 打印带 token 的打开地址）。还差：SMB/NFS 网络盘怎么对待（改名、锁、原子写入会丢，不对着网络挂载做扫描）、NAS 开机自启与升级流程。 |
 
 ### 4.3 必须项的完成顺序
 

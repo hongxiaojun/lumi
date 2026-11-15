@@ -48,6 +48,7 @@ docker build -t lumi . && docker run -p 8080:8080 lumi
 - Docker 里即使从本机访问，请求也是从网桥进来的，不算 loopback。所以容器部署请务必设 `LEAF_TOKEN`，否则写库、删书一律 401。
 - 本机没有 `docker compose` 插件时，用 `docker build -t lumi .` 加 `docker run -p 8080:8080 -e LEAF_TOKEN=<密钥> -v lumi-library:/data/library lumi`，等价于 compose 里那三行。
 - 镜像架构要和目标机器一致。Mac（arm64）造的镜像拷到 x86_64 的 NAS 上跑不起来，直接在那台机器上 build 最省事。
+- 部署到 NAS 用 `scripts/deploy-nas.sh`（默认走 SSH 别名 `feiniu`，`--host` / `--port` 可改）：同步源码 → 在 NAS 上 build → 换容器 → 检查 `/health`，最后打印带 token 的一次性打开地址。卷 `lumi-library` 不动。
 
 ## 网络访问
 

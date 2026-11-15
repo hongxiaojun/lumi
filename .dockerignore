@@ -5,3 +5,7 @@ dist
 .git
 coverage
 data
+.tokenize
+.vmark
+.claude
+.DS_Store
