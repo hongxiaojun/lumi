@@ -33,6 +33,13 @@ html, body, #root {
   overscroll-behavior: none;
   touch-action: pan-x pan-y;
 }
+html {
+  /* Hold the scrollbar's width open. Without it the webview narrows the moment
+     a page grows past the window, which crosses a width breakpoint, swaps in the
+     shorter phone layout, and lets the scrollbar go again — a loop that blinked
+     the shelf between two layouts several times a second. */
+  scrollbar-gutter: stable;
+}
 body {
   font-family: var(--ui);
   background: var(--bg);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { PHONE_QUERY } from './lib/breakpoints'
 import type { FontId, LibraryBook, Prefs, TranslatorConfig, TtsConfig } from './types'
 import type { Annotation } from './lib/notes'
 import { mergeAnnotation } from './lib/notes'
@@ -113,7 +114,7 @@ export default function App() {
   const [playerListen, setPlayerListen] = useState(false)
   const [locateBook, setLocateBook] = useState(false)
   const [playback, setPlayback] = useState<ShelfPlayback | null>(null)
-  const [narrowShelf, setNarrowShelf] = useState(() => window.matchMedia('(max-width: 719px)').matches)
+  const [narrowShelf, setNarrowShelf] = useState(() => window.matchMedia(PHONE_QUERY).matches)
   const listenToggle = useRef<(() => void) | null>(null)
   const reportPlayback = useCallback((next: ShelfPlayback | null) => {
     setPlayback((prev) => (samePlayback(prev, next) ? prev : next))
@@ -124,7 +125,7 @@ export default function App() {
   useReadingClock(Boolean(current) && (!playerListen || locateBook))
   useEffect(() => startSleepAlarm(), [])
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 719px)')
+    const media = window.matchMedia(PHONE_QUERY)
     const onChange = () => setNarrowShelf(media.matches)
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)

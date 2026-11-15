@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { PHONE_QUERY } from '../lib/breakpoints'
 import type { LibraryBook, TtsConfig } from '../types'
 import { shelfMarks } from '../lib/format'
 import { featuredBookId, plankRows, plankSize } from '../lib/shelfMotion'
@@ -89,7 +90,7 @@ export function Library({
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [listenOpen, setListenOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 719px)').matches)
+  const [phone, setPhone] = useState(() => window.matchMedia(PHONE_QUERY).matches)
   const rows = shelfRows(books, section, query)
   const shownBooks = rows.books
   const counts = sectionCounts(books)
@@ -112,7 +113,7 @@ export function Library({
   const turned = shown ? featured : null
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 719px)')
+    const media = window.matchMedia(PHONE_QUERY)
     const apply = () => setPhone(media.matches)
     apply()
     media.addEventListener('change', apply)
