@@ -155,7 +155,7 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 | M21 | 英文导入后重排           | 已有 | 去出版商样式、拼硬换行、Newsreader、段距、左标题、素页。连字、字距和连续断词不超过两行由页面绘制，不改原句              |
 | M22 | 对照翻译（当前章 + 预译下一章） | 已有 | 禁止默认全书开翻                                                                |
 | M23 | 每书 AI 书库          | 已有 | `~/.leaf-reader/library/<slug>/`：AI.md、digest、chapters、chunks。导入或首次打开生成 |
-| M24 | 飞牛 NAS Docker     | 部分 | 2026-11-15 在本机 Docker 28.3.2 上打出镜像并跑通：`/health` 200、首页 200、卷内 `AI.md` / `chapters/` / `INDEX.md` 落盘，重启容器后仍在，`removeSlug: "."` 被拒（400）。容器里从宿主机访问也走网桥、不算 loopback，所以必须设 `LEAF_TOKEN`：无凭证 401，带 `X-Leaf-Token` 或先用 `?token=` 换到的 cookie 才写。飞牛主机未跑。本机没装 `docker compose` 插件，README 给等价的 `docker build` + `docker run`。卷挂 `/data/library`，卷是容器里的本地路径。SMB/NFS 网络盘上改名、锁和原子写入会丢，不对着网络挂载做扫描。 |
+| M24 | 飞牛 NAS Docker     | 部分 | 2026-11-15 已在飞牛真机（x86_64，`10.10.10.8:8080`）跑通：镜像在 NAS 上 build，卷 `lumi-library` 挂 `/vol1/docker/volumes/lumi-library/_data`。从 Mac 核对：`/health` 200、首页 200、`?token=` 302 并下发 HttpOnly cookie、带 cookie POST 200、无凭证 POST 401、`removeSlug: "."` 400、删 `<slug>` 目录 200。卷内 `AI.md` / `chapters/` / `INDEX.md` 落盘，`docker restart` 后仍在。容器里从宿主机访问也走网桥、不算 loopback，所以必须设 `LEAF_TOKEN`。本机没装 `docker compose` 插件，README 给等价的 `docker build` + `docker run`，并写明镜像架构要跟目标机一致。还差：SMB/NFS 网络盘怎么对待（改名、锁、原子写入会丢，不对着网络挂载做扫描）、NAS 开机自启与升级流程。 |
 
 ### 4.3 必须项的完成顺序
 
@@ -167,7 +167,7 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 4. M1 坏书/加密/扫描件的可读错误
 5. M10 书文件落盘（桌面 + 与 NAS 卷对齐）
 6. M12 拖入/文件关联
-7. M24 在飞牛上跑通并核对 AI 书库落卷
+7. M24 在飞牛上跑通并核对 AI 书库落卷（2026-11-15 已完成）
 
 ---
 
@@ -384,3 +384,4 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 | 2026-11-14 | C5：朗读页封面左滑不到句子。封面格被外层裁掉，里面的横向滚动没有可滚的距离。改为手指左滑翻到大字句子，右滑回到封面，竖着滑不翻。特征标记是 `listen-spread-track`。装到 iPhone 17，序号 4104，前端 `index-DkcdQ3ij.js`。真机未看。 |
 | 2026-11-15 | 加固一轮，不动阅读观感。① 进度落盘：翻页仍是 400ms 防抖，写入改为单通道串行（`src/lib/progressSave.ts`）；隐藏页面、`pagehide`、卸载、换书、删书、标记未读前先 flush，写失败在阅读器和书架同时提示，值留着下次重试。顺手修掉连续翻页丢字段、同一条笔记落两条的更新器竞态（React 19 会延迟执行更新器）。② 网络：打包后 `connect-src` 去掉明文 `http:`，capabilities 去掉 `http://*:*`，自填 Base URL 只能用 HTTPS。③ 书库路径：`safePath`、`slug`、Rust `safe_join`、独立 server 四处同一套规则，拒 `.`、`..`、绝对路径和盘符，删书拒绝删到库根。④ Docker：服务默认绑 `127.0.0.1`，镜像内显式 `0.0.0.0`；写库删书要 `LEAF_TOKEN`，未设时只允许本机写，只读访问不受影响。真机未走查。 |
 | 2026-11-15 | M24：本机 Docker 28.3.2 打出 `lumi:local` 并跑通。核对结果：`/health` 与首页 200；带 `LEAF_TOKEN` 时无凭证 401、带 `X-Leaf-Token` 200；卷内 `INDEX.md`、`<slug>/AI.md`、`<slug>/chapters/` 落盘，重启容器后仍在；`removeSlug: "."` 返回 400。发现并修掉一个真问题：浏览器加不了请求头，容器里从宿主机访问也走网桥、不算 loopback，所以 Docker 下写库此前一律 401、AI 书库根本落不了盘。改为页面首次用 `?token=<密钥>` 打开时记进 HttpOnly cookie（SameSite=Lax，一年），再 302 把 token 从地址栏抹掉；请求头、Bearer、cookie 三条都认。新增 `src/lib/serverAuth.test.ts` 守住四种情形。本机没有 `docker compose` 插件，README 补等价 `docker build` + `docker run`。飞牛主机未跑，M24 仍是部分。 |
+| 2026-11-15 | M24：搬到飞牛真机跑。NAS 是 x86_64，Mac 造的 arm64 镜像拷不过去，改成 rsync 源码到 `~/lumi-src`、在 NAS 上 `docker build`（约 2 分钟）。卷 `lumi-library` 落在 `/vol1/docker/volumes/lumi-library/_data`。从 Mac 核到：`/health` 200、首页 200 且 `index-*.js` 可取、`?token=<密钥>` 302 且下发 `leaf_token`（HttpOnly、SameSite=Lax）、带 cookie 写库 200、无凭证 401、错 token 200 但不发 cookie、`removeSlug: "."` 400、删 `<slug>` 目录 200、`docker restart` 后卷内文件仍在。走完把探针文件清掉，卷是空的，等真实导入。SSH 改成密钥免密（`~/.ssh/config` 里 `Host feiniu`）。还差 SMB/NFS 网络盘和开机自启、升级流程，M24 仍是部分。 |

@@ -47,6 +47,7 @@ docker build -t lumi . && docker run -p 8080:8080 lumi
 - 浏览器没法自己加请求头，所以设了 `LEAF_TOKEN` 之后，第一次请用 `http://<主机>:8080/?token=<密钥>` 打开一次：服务端把它记进 HttpOnly cookie，然后 302 把 `token` 从地址栏抹掉。之后同一个浏览器正常读写。
 - Docker 里即使从本机访问，请求也是从网桥进来的，不算 loopback。所以容器部署请务必设 `LEAF_TOKEN`，否则写库、删书一律 401。
 - 本机没有 `docker compose` 插件时，用 `docker build -t lumi .` 加 `docker run -p 8080:8080 -e LEAF_TOKEN=<密钥> -v lumi-library:/data/library lumi`，等价于 compose 里那三行。
+- 镜像架构要和目标机器一致。Mac（arm64）造的镜像拷到 x86_64 的 NAS 上跑不起来，直接在那台机器上 build 最省事。
 
 ## 网络访问
 
