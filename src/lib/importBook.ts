@@ -138,6 +138,7 @@ export async function convertPdf(
     language,
     pages: extracted.pages,
     heights: extracted.heights,
+    widths: extracted.widths,
     chapterStarts: extracted.chapterStarts,
     outline: extracted.outline,
     figures: extracted.images,

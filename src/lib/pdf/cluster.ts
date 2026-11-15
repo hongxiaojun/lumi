@@ -14,6 +14,11 @@ export type PdfLine = {
   text: string
 }
 
+/** A gap this wide is a column gutter, not a word space: justified text stretches
+ * a space to about 0.6 em at worst, real gutters run 1.5–3 em. layout.ts imports
+ * this value as its minimum gutter width, so both halves agree on what a gutter is. */
+export const LINE_SPLIT_EM = 1.8
+
 export function clusterLines(runs: PdfRun[], yTol = 0.35): PdfLine[] {
   const usable = runs.filter((item) => item.str.length > 0)
   usable.sort((a, b) => (Math.abs(a.y - b.y) > 0.5 ? b.y - a.y : a.x - b.x))
@@ -21,7 +26,8 @@ export function clusterLines(runs: PdfRun[], yTol = 0.35): PdfLine[] {
   for (const item of usable) {
     const last = lines[lines.length - 1]
     const seed = last?.[0]
-    if (seed && Math.abs(item.y - seed.y) < yTol * Math.max(seed.h, item.h, 1)) {
+    const prev = last?.[last.length - 1]
+    if (seed && prev && sameLine(seed, prev, item, yTol)) {
       last.push(item)
       continue
     }
@@ -49,6 +55,14 @@ export function linesToHtml(lines: PdfLine[]): string {
   return lines
     .map((line) => `<p>${escapeHtml(line.text)}</p>`)
     .join('')
+}
+
+function sameLine(seed: PdfRun, prev: PdfRun, next: PdfRun, yTol: number): boolean {
+  const size = Math.max(prev.h, next.h, 1)
+  if (Math.abs(next.y - seed.y) >= yTol * Math.max(seed.h, next.h, 1)) return false
+  // Runs in different columns share a baseline, so the y test alone would glue
+  // the tail of the left column to the head of the right one.
+  return next.x - (prev.x + prev.w) <= LINE_SPLIT_EM * size
 }
 
 function joinGap(prev: PdfRun, next: PdfRun): string {

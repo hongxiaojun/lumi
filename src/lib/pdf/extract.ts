@@ -32,6 +32,9 @@ async function ensureWorker(): Promise<void> {
 export type PdfExtract = {
   pages: PdfRun[][]
   heights: number[]
+  /** Page width in unrotated user space — the same space as PdfRun.x, so the
+   * column detector can tell a full-width line from a column line. */
+  widths: number[]
   charCount: number
   pageCount: number
   encrypted: boolean
@@ -86,6 +89,7 @@ export async function extractPdf(
     const pdf = await task.promise
     const pages: PdfRun[][] = []
     const heights: number[] = []
+    const widths: number[] = []
     const images: PdfFigure[][] = []
     let charCount = 0
     const total = pdf.numPages
@@ -93,6 +97,9 @@ export async function extractPdf(
       const page = await pdf.getPage(i)
       const viewport = page.getViewport({ scale: 1 })
       heights.push(viewport.height)
+      // page.view is the MediaBox before rotation, which is where runsFromPdfItems
+      // puts its x values; the viewport is already rotated and would disagree.
+      widths.push(Math.abs(page.view[2] - page.view[0]) || viewport.width)
       const content = await page.getTextContent()
       let runs = runsFromPdfItems(content.items as Array<{ str?: string; width?: number; transform?: number[] }>)
       if (opts.ocrPage && pageNeedsOcr(runs)) {
@@ -119,6 +126,7 @@ export async function extractPdf(
     return {
       pages,
       heights,
+      widths,
       charCount,
       pageCount: pages.length,
       encrypted: false,
@@ -134,6 +142,7 @@ export async function extractPdf(
       return {
         pages: [],
         heights: [],
+        widths: [],
         charCount: 0,
         pageCount: 0,
         encrypted: true,

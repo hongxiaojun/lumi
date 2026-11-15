@@ -36,4 +36,44 @@ describe('stripRepeatedMargins', () => {
     expect(cleaned.flat().map((l) => l.text).join(' ')).not.toMatch(/https?:/)
     expect(cleaned.flat().some((l) => l.text.includes('正文'))).toBe(true)
   })
+
+  it('drops folios in every shape a book uses', () => {
+    const folios = [
+      '12',
+      '- 12 -',
+      '— 12 —',
+      '· 12 ·',
+      '12 / 345',
+      '12 of 345',
+      'Page 12',
+      'Page 12 of 345',
+      '第 12 页',
+      '第12页',
+      '第12页/共345页',
+      '　１２　',
+      'iv',
+      'XII',
+    ]
+    for (const text of folios) {
+      const cleaned = stripRepeatedMargins([[line('正文。', 400), line(text, 20)]], [800])
+      expect(cleaned[0].map((l) => l.text), text).toEqual(['正文。'])
+    }
+  })
+
+  it('drops a lone folio from a single-page PDF', () => {
+    const cleaned = stripRepeatedMargins([[line('正文。', 400), line('7', 24)]], [800])
+    expect(cleaned[0].map((l) => l.text)).toEqual(['正文。'])
+  })
+
+  it('keeps numbers that are body text, a list marker, or a heading', () => {
+    const kept = [
+      line('2024', 400),
+      line('1. 引言', 20),
+      line('第 12 页的正文不在页边', 400),
+      line('上文 12', 20),
+      line('I', 400),
+    ]
+    const cleaned = stripRepeatedMargins([kept], [800])
+    expect(cleaned[0].map((l) => l.text)).toEqual(kept.map((l) => l.text))
+  })
 })

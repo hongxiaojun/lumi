@@ -21,7 +21,7 @@ export function makeEpubBlob(input: {
   }
   chapters.forEach((ch, i) => {
     const name = `OEBPS/ch${String(i + 1).padStart(2, '0')}.xhtml`
-    files.push({ name, data: enc(xhtml(ch.title, ch.html)) })
+    files.push({ name, data: enc(xhtml(ch.title, ch.html, input.language)) })
   })
   const packed = zipStore(files)
   const copy = new Uint8Array(packed.byteLength)
@@ -88,9 +88,9 @@ function navXhtml(bookTitle: string, chapters: Array<{ title: string }>): string
 </html>`
 }
 
-function xhtml(title: string, html: string): string {
+function xhtml(title: string, html: string, lang: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="zh">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${lang}">
   <head><title>${escapeXml(title)}</title></head>
   <body>${asXhtml(html)}</body>
 </html>`

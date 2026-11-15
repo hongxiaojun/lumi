@@ -25,6 +25,8 @@ describe('extractPdf', () => {
     expect(out.encrypted).toBe(false)
     expect(out.pageCount).toBe(1)
     expect(out.charCount).toBeGreaterThan(4)
+    // MediaBox is [0 0 300 200]: the width the column detector measures against.
+    expect(out.widths).toEqual([300])
     const joined = out.pages.flat().map((r) => r.str).join('')
     expect(joined).toMatch(/Hello/)
     expect(seen).toEqual([[1, 1]])

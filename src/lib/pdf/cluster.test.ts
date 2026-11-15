@@ -31,6 +31,23 @@ describe('clusterLines', () => {
     ])
     expect(lines.map((l) => l.text)).toEqual(['上一行', '下一行'])
   })
+
+  it('keeps same-baseline runs in different columns as separate lines', () => {
+    const lines = clusterLines([
+      run('left column tail', 72, 500, 12, 240),
+      run('right column head', 350, 500, 12, 240),
+    ])
+    expect(lines.map((l) => l.text)).toEqual(['left column tail', 'right column head'])
+  })
+
+  it('still joins runs across a normal word gap', () => {
+    const lines = clusterLines([
+      run('Hello', 72, 500, 12, 40),
+      run('world', 116, 500, 12, 40),
+    ])
+    expect(lines).toHaveLength(1)
+    expect(lines[0].text).toBe('Hello world')
+  })
 })
 
 describe('linesToHtml then restyleDocument', () => {

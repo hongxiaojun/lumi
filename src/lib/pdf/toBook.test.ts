@@ -58,8 +58,39 @@ describe('pagesToChapters', () => {
     const chapters = pagesToChapters([[]], [800], '书', [0], undefined, figures)
     expect(chapters[0].html).toContain('<img src="img/p001-1.jpg"')
   })
+
+  it('reads a two-column page left column first', () => {
+    const html = pagesToChapters([twoColumnPage()], [800], '书', undefined, undefined, undefined, {
+      widths: [595],
+    })[0].html
+    // The last line of the left column must still come before the first of the
+    // right one; a y-sorted page interleaves them.
+    expect(html.indexOf('left line number 9')).toBeLessThan(html.indexOf('right line number 0'))
+  })
+
+  it('places a figure by reading order, not by page height', () => {
+    const figures = [[{ top: 600, name: 'img/p001-1.jpg', bytes: new Uint8Array([0xff, 0xd8]) }]]
+    const html = pagesToChapters([twoColumnPage()], [800], '书', undefined, undefined, figures, {
+      widths: [595],
+    })[0].html
+    const img = html.indexOf('src="img/p001-1.jpg"')
+    expect(html.indexOf('right line number 0')).toBeGreaterThan(img)
+    expect(html.indexOf('left line number 7')).toBeLessThan(img)
+    expect(html.indexOf('left line number 8')).toBeGreaterThan(img)
+  })
+
+  it('keeps y order when the page width is unknown', () => {
+    const html = pagesToChapters([twoColumnPage()], [800], '书')[0].html
+    expect(html.indexOf('right line number 0')).toBeLessThan(html.indexOf('left line number 1'))
+  })
 })
 
+/** Two 160pt columns sharing baselines, the shape that used to interleave. */
+function twoColumnPage(): PdfRun[] {
+  const left = Array.from({ length: 10 }, (_, i) => run(`left line number ${i}`, 72, 700 - i * 14))
+  const right = Array.from({ length: 10 }, (_, i) => run(`right line number ${i}`, 340, 700 - i * 14))
+  return [...left, ...right]
+}
 
 describe('pdfDisplayTitle', () => {
   it('falls back to the file name when metadata is empty or generic', () => {
@@ -93,6 +124,19 @@ describe('pdfToEpubFile', () => {
     expect(text).toContain('nav.xhtml')
     expect(text).toContain('Hello world')
     expect(text).toContain('epub:type="toc"')
+  })
+
+  it('declares the book language on the chapter html', async () => {
+    const file = pdfToEpubFile({
+      title: 'Hello',
+      author: 'PDF',
+      language: 'en',
+      pages: [[run('Hello world.', 50, 400)]],
+      heights: [800],
+    })
+    const text = new TextDecoder().decode(new Uint8Array(await file.arrayBuffer()))
+    expect(text).toContain('xml:lang="en"')
+    expect(text).not.toContain('xml:lang="zh"')
   })
 
   it('stores a figure JPEG beside the chapter that shows it', async () => {

@@ -319,4 +319,31 @@ describe('restyleEnglishDocument', () => {
     restyleEnglishDocument(doc)
     expect(doc.querySelectorAll('p')).toHaveLength(2)
   })
+
+  it('drops the hyphen when a word is broken across the line', () => {
+    const doc = parse('<p>The result was incon-</p><p>clusive at first.</p>')
+    restyleEnglishDocument(doc)
+    expect(doc.querySelectorAll('p')).toHaveLength(1)
+    expect(text(doc)).toBe('The result was inconclusive at first.')
+  })
+
+  it('drops a hyphen that ends inside a span', () => {
+    const doc = parse('<p>They were <em>incon-</em></p><p>clusive as a group.</p>')
+    restyleEnglishDocument(doc)
+    expect(text(doc)).toBe('They were inconclusive as a group.')
+    expect(doc.querySelector('em')?.textContent).toBe('incon')
+  })
+
+  it('keeps a hyphen that sits inside the line', () => {
+    const doc = parse('<p>The well-known result was never the</p><p>job that paid the bills.</p>')
+    restyleEnglishDocument(doc)
+    expect(text(doc)).toBe('The well-known result was never the job that paid the bills.')
+  })
+
+  it('does not strip a hyphen before a capitalized word', () => {
+    const doc = parse('<p>See also-</p><p>Appendix A.</p>')
+    restyleEnglishDocument(doc)
+    expect(doc.querySelectorAll('p')).toHaveLength(2)
+    expect(text(doc)).toContain('also-')
+  })
 })

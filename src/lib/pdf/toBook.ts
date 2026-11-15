@@ -4,6 +4,7 @@ import { clusterLines, linesToHtml, type PdfLine, type PdfRun } from './cluster'
 import { stripRepeatedMargins } from './headers'
 import { makeEpubBlob } from './epubZip'
 import type { PdfFigure } from './figures'
+import { orderPageLines } from './layout'
 import type { PdfOutlineItem } from './outline'
 
 const PAGES_PER_CHAPTER = 8
@@ -15,6 +16,7 @@ export function pagesToChapters(
   chapterStarts?: number[],
   outline?: PdfOutlineItem[],
   figures?: PdfFigure[][],
+  opts?: { widths: number[] },
 ): Array<{ title: string; html: string }> {
   const linePages = pages.map((runs) => clusterLines(runs))
   const cleaned = stripRepeatedMargins(linePages, heights)
@@ -26,7 +28,16 @@ export function pagesToChapters(
   const chapters: Array<{ title: string; html: string }> = []
   ranges.forEach(([from, to]) => {
     const html = restyleHtml(
-      cleaned.slice(from, to).map((lines, index) => pageBody(lines, figures?.[from + index] ?? [])).join(''),
+      cleaned
+        .slice(from, to)
+        .map((lines, index) => {
+          const page = opts?.widths[from + index]
+          // No width means no page geometry to reason about, so the lines keep
+          // the order they came in — the old behaviour, untouched.
+          const ordered = page ? orderPageLines(lines, { width: page, height: heights[from + index] ?? 0 }) : lines
+          return pageBody(ordered, figures?.[from + index] ?? [])
+        })
+        .join(''),
       lang,
     )
     if (!html.replace(/<[^>]+>/g, '').trim() && !html.includes('<img ')) return
@@ -55,6 +66,7 @@ export function pdfToEpubFile(input: {
   language: string
   pages: PdfRun[][]
   heights: number[]
+  widths?: number[]
   chapterStarts?: number[]
   outline?: PdfOutlineItem[]
   figures?: PdfFigure[][]
@@ -66,6 +78,7 @@ export function pdfToEpubFile(input: {
     input.chapterStarts,
     input.outline,
     input.figures,
+    input.widths ? { widths: input.widths } : undefined,
   )
   const blob = makeEpubBlob({
     title: input.title,
@@ -96,13 +109,22 @@ function pageRanges(pageCount: number, starts?: number[]): Array<[number, number
   return ranges
 }
 
+/** Lines arrive in reading order, which is no longer top-to-bottom once a page
+ * has columns, so a figure is placed before the first line that sits below it
+ * rather than by re-sorting everything by y. A figure level with a line goes
+ * first, as it always has. */
 function pageBody(lines: PdfLine[], figures: PdfFigure[]): string {
-  const parts = [
-    ...lines.map((line) => ({ y: line.y, html: linesToHtml([line]), image: false })),
-    ...figures.map((figure) => ({ y: figure.top, html: `<img src="${figure.name}" alt=""/>`, image: true })),
-  ]
-  parts.sort((a, b) => b.y - a.y || Number(b.image) - Number(a.image))
-  return parts.map((part) => part.html).join('')
+  const parts: string[] = []
+  let next = 0
+  for (const figure of [...figures].sort((a, b) => b.top - a.top)) {
+    while (next < lines.length && lines[next].y > figure.top) {
+      parts.push(linesToHtml([lines[next]]))
+      next += 1
+    }
+    parts.push(`<img src="${figure.name}" alt=""/>`)
+  }
+  for (; next < lines.length; next += 1) parts.push(linesToHtml([lines[next]]))
+  return parts.join('')
 }
 
 function usedFigures(

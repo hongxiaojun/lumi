@@ -162,6 +162,7 @@ function mergeHardWrappedParagraphs(root: Element, profile: 'en' | 'zh'): void {
     if (!isOpenLine(left, profile) || !isContinuation(right, profile)) continue
     dropSkippedBetween(a, b)
     trimLeadingSpace(b)
+    if (joinsHyphenatedWord(left)) dropTrailingHyphen(a)
     const gap = joinGap(left, plain(b))
     if (gap) a.append(a.ownerDocument.createTextNode(gap))
     while (b.firstChild) a.append(b.firstChild)
@@ -246,4 +247,28 @@ function isContinuation(text: string, profile: 'en' | 'zh'): boolean {
 function joinGap(left: string, right: string): string {
   if (/[A-Za-z]$/.test(left) && /^[A-Za-z]/.test(right)) return ' '
   return ''
+}
+
+/** "con-" + "tinue" is one word broken by the line, so the hyphen has to go;
+ * joining it as it stands gives "con-tinue". The caller has already checked
+ * that the next line opens in lowercase, which is what tells a split word from
+ * a hyphen before a new sentence; a hyphen inside a line ("well-known") never
+ * reaches here, and neither does an en or em dash at the line end. */
+function joinsHyphenatedWord(left: string): boolean {
+  return /[A-Za-z]-$/.test(left)
+}
+
+/** Removes the hyphen the previous line ends on, leaving any text node in
+ * front of it untouched. */
+function dropTrailingHyphen(el: Element): void {
+  const walk = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let last: Node | null = null
+  let node = walk.nextNode()
+  while (node) {
+    if ((node.textContent ?? '').trim()) last = node
+    node = walk.nextNode()
+  }
+  if (!last) return
+  const raw = last.textContent ?? ''
+  last.textContent = raw.replace(/-[\s\u00a0]*$/, '')
 }
