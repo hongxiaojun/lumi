@@ -19,6 +19,9 @@ export type PdfLine = {
  * this value as its minimum gutter width, so both halves agree on what a gutter is. */
 export const LINE_SPLIT_EM = 1.8
 
+/** The ligature runs pdf.js reports on their own, already expanded to letters. */
+const LIGATURE = /^(?:ffi|ffl|fi|fl|ff)$/
+
 export function clusterLines(runs: PdfRun[], yTol = 0.35): PdfLine[] {
   const usable = runs.filter((item) => item.str.length > 0)
   usable.sort((a, b) => (Math.abs(a.y - b.y) > 0.5 ? b.y - a.y : a.x - b.x))
@@ -70,6 +73,15 @@ function joinGap(prev: PdfRun, next: PdfRun): string {
   const right = next.str.slice(0, 1)
   if (/[\u3400-\u9fff]/.test(left) && /[\u3400-\u9fff]/.test(right)) return ''
   const gap = next.x - (prev.x + prev.w)
+  // pdf.js emits the ﬁ ligature as a run of its own whose text is already the
+  // two letters: "identi" + "fi" + "es", each butted against the next with no
+  // gap. The letter-to-letter fallback below would read both joins as word
+  // breaks and print "identi fi es", which is what every English journal PDF
+  // looks like without this. A real word space always renders as a gap, so the
+  // rule only holds while the two runs touch.
+  if (gap <= 0.05 * Math.max(prev.h, next.h, 1) && (LIGATURE.test(prev.str) || LIGATURE.test(next.str))) {
+    return ''
+  }
   if (gap > 0.15 * Math.max(prev.h, next.h, 1)) return ' '
   if (/[A-Za-z]$/.test(prev.str) && /^[A-Za-z]/.test(next.str)) return ' '
   return ''

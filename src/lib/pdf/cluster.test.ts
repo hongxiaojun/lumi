@@ -24,6 +24,37 @@ describe('clusterLines', () => {
     expect(lines[0].text).toBe('Hello world')
   })
 
+  it('keeps a ligature run attached to the rest of its word', () => {
+    // pdf.js hands back "fi" as its own run, and the rest of the word starts at
+    // exactly its right edge: no gap at all, so the letter-to-letter space rule
+    // must not fire.
+    const lines = clusterLines([
+      run('These ', 50, 400, 9, 26),
+      run('fi', 76, 400, 9, 4.97),
+      run('ndings', 80.97, 400, 9, 32),
+    ])
+    expect(lines[0].text).toBe('These findings')
+  })
+
+  it('keeps a ligature run attached on both sides', () => {
+    // The ligature lands mid-word as often as at the start: "identi" + "fi" +
+    // "es" must not become "identi fi es".
+    const lines = clusterLines([
+      run('evidence and identi', 48, 400, 9, 139.17),
+      run('fi', 187.2, 400, 9, 4.97),
+      run('es gaps', 192.19, 400, 9, 44),
+    ])
+    expect(lines[0].text).toBe('evidence and identifies gaps')
+  })
+
+  it('does not glue a ligature run across a real word gap', () => {
+    const lines = clusterLines([
+      run('fi', 50, 400, 9, 4.97),
+      run('ndings', 62, 400, 9, 32),
+    ])
+    expect(lines[0].text).toBe('fi ndings')
+  })
+
   it('splits different Y into two lines (PDF y-up: larger y is above)', () => {
     const lines = clusterLines([
       run('上一行', 50, 520, 12, 48),

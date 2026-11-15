@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { makeBook } from 'foliate-js/view.js'
 import { convertPdf } from '../importBook'
 import { classifyPdf, pdfRejectReason } from './classify'
+import { garbledRatio } from './garbled'
 import { clusterLines } from './cluster'
 import { extractPdf, setPdfAssetUrls, setPdfWorkerSrc } from './extract'
 import { orderPageLines } from './layout'
@@ -24,7 +25,11 @@ describe.skipIf(!files.length)('real PDF pipeline', () => {
     })
     for (const file of files) {
       const extracted = await extractPdf(readFileSync(file))
-      const kind = classifyPdf(extracted)
+      // The same input importBook builds: without the garbled ratio a magazine
+      // whose fonts lack a ToUnicode map still reports "text" here and the QA
+      // numbers describe a book the app would have sent to OCR.
+      const allText = extracted.pages.flat().map((run) => run.str).join('')
+      const kind = classifyPdf({ ...extracted, garbledRatio: garbledRatio(allText) })
       const reason = pdfRejectReason(kind)
       const chapters = reason
         ? []

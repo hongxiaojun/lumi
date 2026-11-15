@@ -334,6 +334,17 @@ describe('restyleEnglishDocument', () => {
     expect(doc.querySelector('em')?.textContent).toBe('incon')
   })
 
+  it('keeps the word space when the line stops on a comma', () => {
+    // A real journal line: "…sustained cognitive engagement," / "as processing
+    // slows". Joining the two without a space gives "engagement,as".
+    const doc = parse('<p>control and reduce the capacity for sustained cognitive engagement,</p><p>as processing becomes increasingly difficult.</p>')
+    restyleEnglishDocument(doc)
+    expect(doc.querySelectorAll('p')).toHaveLength(1)
+    expect(text(doc)).toBe(
+      'control and reduce the capacity for sustained cognitive engagement, as processing becomes increasingly difficult.',
+    )
+  })
+
   it('keeps a hyphen that sits inside the line', () => {
     const doc = parse('<p>The well-known result was never the</p><p>job that paid the bills.</p>')
     restyleEnglishDocument(doc)

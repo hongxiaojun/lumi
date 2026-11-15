@@ -246,6 +246,11 @@ function isContinuation(text: string, profile: 'en' | 'zh'): boolean {
 
 function joinGap(left: string, right: string): string {
   if (/[A-Za-z]$/.test(left) && /^[A-Za-z]/.test(right)) return ' '
+  // A line that stops on a comma still needs the space the line break replaced:
+  // "…sustained cognitive engagement," + "as processing slows" otherwise reads
+  // "engagement,as processing slows". Same for the other marks that never touch
+  // the following word.
+  if (/[,;:)]$/.test(left) && /^[A-Za-z0-9"'(]/.test(right)) return ' '
   return ''
 }
 
