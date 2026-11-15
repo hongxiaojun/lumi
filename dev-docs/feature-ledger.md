@@ -155,7 +155,7 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 | M21 | 英文导入后重排           | 已有 | 去出版商样式、拼硬换行、Newsreader、段距、左标题、素页。连字、字距和连续断词不超过两行由页面绘制，不改原句              |
 | M22 | 对照翻译（当前章 + 预译下一章） | 已有 | 禁止默认全书开翻                                                                |
 | M23 | 每书 AI 书库          | 已有 | `~/.leaf-reader/library/<slug>/`：AI.md、digest、chapters、chunks。导入或首次打开生成 |
-| M24 | 飞牛 NAS Docker     | 部分 | Dockerfile / compose 已写；本机 daemon 未打过镜像。卷挂 `/data/library`。卷是容器里的本地路径。SMB/NFS 网络盘上改名、锁和原子写入会丢，不对着网络挂载做扫描。 |
+| M24 | 飞牛 NAS Docker     | 部分 | 2026-11-15 在本机 Docker 28.3.2 上打出镜像并跑通：`/health` 200、首页 200、卷内 `AI.md` / `chapters/` / `INDEX.md` 落盘，重启容器后仍在，`removeSlug: "."` 被拒（400）。容器里从宿主机访问也走网桥、不算 loopback，所以必须设 `LEAF_TOKEN`：无凭证 401，带 `X-Leaf-Token` 或先用 `?token=` 换到的 cookie 才写。飞牛主机未跑。本机没装 `docker compose` 插件，README 给等价的 `docker build` + `docker run`。卷挂 `/data/library`，卷是容器里的本地路径。SMB/NFS 网络盘上改名、锁和原子写入会丢，不对着网络挂载做扫描。 |
 
 ### 4.3 必须项的完成顺序
 
@@ -383,3 +383,4 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 | 2026-11-13 | C5：朗读新增 DeepSeek 语音。它走 `/v1/tools/tts`，不是 OpenAI 兼容的 `/audio/speech`，所以单独一个 provider，不并进「云端语音」的自由配置里。密钥加 stella / tide 两个音色，整句返回 wav。服务不支持变速，倍速改在本机 audio 元素上放，切倍速才重放这一句、不重新请求。沿用同一套按句缓存和下一句预取；单句上限 220 字，远低于 1 万计费字。WebSocket 流式没接，也没有「原始 PCM 自己拼 wav」。真实端点试听未做。 |
 | 2026-11-14 | C5：朗读页封面左滑不到句子。封面格被外层裁掉，里面的横向滚动没有可滚的距离。改为手指左滑翻到大字句子，右滑回到封面，竖着滑不翻。特征标记是 `listen-spread-track`。装到 iPhone 17，序号 4104，前端 `index-DkcdQ3ij.js`。真机未看。 |
 | 2026-11-15 | 加固一轮，不动阅读观感。① 进度落盘：翻页仍是 400ms 防抖，写入改为单通道串行（`src/lib/progressSave.ts`）；隐藏页面、`pagehide`、卸载、换书、删书、标记未读前先 flush，写失败在阅读器和书架同时提示，值留着下次重试。顺手修掉连续翻页丢字段、同一条笔记落两条的更新器竞态（React 19 会延迟执行更新器）。② 网络：打包后 `connect-src` 去掉明文 `http:`，capabilities 去掉 `http://*:*`，自填 Base URL 只能用 HTTPS。③ 书库路径：`safePath`、`slug`、Rust `safe_join`、独立 server 四处同一套规则，拒 `.`、`..`、绝对路径和盘符，删书拒绝删到库根。④ Docker：服务默认绑 `127.0.0.1`，镜像内显式 `0.0.0.0`；写库删书要 `LEAF_TOKEN`，未设时只允许本机写，只读访问不受影响。真机未走查。 |
+| 2026-11-15 | M24：本机 Docker 28.3.2 打出 `lumi:local` 并跑通。核对结果：`/health` 与首页 200；带 `LEAF_TOKEN` 时无凭证 401、带 `X-Leaf-Token` 200；卷内 `INDEX.md`、`<slug>/AI.md`、`<slug>/chapters/` 落盘，重启容器后仍在；`removeSlug: "."` 返回 400。发现并修掉一个真问题：浏览器加不了请求头，容器里从宿主机访问也走网桥、不算 loopback，所以 Docker 下写库此前一律 401、AI 书库根本落不了盘。改为页面首次用 `?token=<密钥>` 打开时记进 HttpOnly cookie（SameSite=Lax，一年），再 302 把 token 从地址栏抹掉；请求头、Bearer、cookie 三条都认。新增 `src/lib/serverAuth.test.ts` 守住四种情形。本机没有 `docker compose` 插件，README 补等价 `docker build` + `docker run`。飞牛主机未跑，M24 仍是部分。 |

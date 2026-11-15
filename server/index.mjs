@@ -17,13 +17,32 @@ function isLoopback(req) {
   return loopbackHosts.has(req.socket.remoteAddress)
 }
 
-/** Accepts `X-Leaf-Token: <token>` or `Authorization: Bearer <token>`. */
+const TOKEN_COOKIE = 'leaf_token'
+
+function cookieValue(req, name) {
+  const raw = req.headers.cookie
+  if (typeof raw !== 'string' || !raw) return ''
+  for (const part of raw.split(';')) {
+    const at = part.indexOf('=')
+    if (at < 0) continue
+    if (part.slice(0, at).trim() !== name) continue
+    try {
+      return decodeURIComponent(part.slice(at + 1).trim())
+    } catch {
+      return ''
+    }
+  }
+  return ''
+}
+
+/** Accepts `X-Leaf-Token: <token>`, `Authorization: Bearer <token>`, or the
+ * cookie the page is given when it is first opened with `?token=<token>`. */
 function requestToken(req) {
   const direct = req.headers['x-leaf-token']
   if (typeof direct === 'string' && direct) return direct
   const auth = req.headers.authorization
   if (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim()
-  return ''
+  return cookieValue(req, TOKEN_COOKIE)
 }
 
 function timingSafeEqual(a, b) {
@@ -104,6 +123,21 @@ function readBody(req) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`)
+  // 浏览器没法自己加请求头，所以页面第一次用 `?token=…` 打开时把密钥记进 HttpOnly cookie，
+  // 再把 token 从地址栏抹掉，免得留在历史和 Referer 里。
+  const supplied = url.searchParams.get('token')
+  if (token && supplied && (req.method === 'GET' || req.method === 'HEAD')) {
+    if (timingSafeEqual(supplied, token)) {
+      url.searchParams.delete('token')
+      const rest = url.searchParams.toString()
+      res.writeHead(302, {
+        'Set-Cookie': `${TOKEN_COOKIE}=${encodeURIComponent(supplied)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000`,
+        Location: `${url.pathname}${rest ? `?${rest}` : ''}`,
+      })
+      res.end()
+      return
+    }
+  }
   if (url.pathname === '/__leaf-ai-db' && req.method === 'GET') {
     send(res, 200, JSON.stringify({ dir: libraryRoot, ok: true }))
     return
