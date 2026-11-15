@@ -10,6 +10,7 @@ import { clampFraction } from '../lib/format'
 import { resolveParallel } from '../lib/translate/lang'
 import { collectSearchYield, isBlankQuery, type SearchHit } from '../lib/searchHits'
 import { subscribeOpenFrame } from '../lib/edgeChapter'
+import { trace } from '../lib/persistTrace'
 import { clampSidebar, panelPlace, SIDEBAR_DEFAULT, sidebarAfterDrag, sidebarBand, type SidebarSide } from '../lib/readerSplit'
 import { themeForScript, themeOf } from '../lib/styles'
 import { menuShown, menusPinnedOnOpen, pageMenuPinned, pointerHoldsMenu } from '../lib/menuChrome'
@@ -67,6 +68,8 @@ type Props = {
   backstage?: boolean
   onPlayback?: (next: ShelfPlayback | null) => void
   bindListenToggle?: (toggle: (() => void) | null) => void
+  /** Out-of-band message to surface in the reader toast (e.g. a failed progress write). */
+  flash?: { text: string; at: number } | null
 }
 
 export function Reader({
@@ -75,7 +78,7 @@ export function Reader({
   onCreateAnnotation, onUpdateAnnotation, onDeleteAnnotation,
   onToggleBookmark, onDeleteBookmark, onBack,
   autoListen = false, listenResume = null, onListenStarted,
-  backstage = false, onPlayback, bindListenToggle,
+  backstage = false, onPlayback, bindListenToggle, flash = null,
 }: Props) {
   const [atMenu, setAtMenu] = useState(false)
   const [atFoot, setAtFoot] = useState(false)
@@ -573,7 +576,11 @@ export function Reader({
               listen.repaint()
               return
             }
-            if (Date.now() < quietProgressUntil.current) return
+            if (Date.now() < quietProgressUntil.current) {
+              trace('drop-quiet', { f: detail.fraction })
+              return
+            }
+            trace('relocate', { f: detail.fraction, c: detail.cfi?.slice(0, 30) })
             onProgress({
               cfi: detail.cfi ?? null,
               fraction: detail.fraction ?? 0,
@@ -617,7 +624,7 @@ export function Reader({
                 : '拨动或点页边翻页 · 鼠标移到页面上沿显示菜单'}
           </div>
         )}
-        {status && <div className="status-toast">{status}</div>}
+        {(status || flash) && <div className="status-toast">{status ?? flash?.text}</div>}
         {listen.active && !voiceOpen && (
           <ListenBar
             view={listen}

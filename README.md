@@ -33,6 +33,25 @@ pnpm tauri:dev    # 原生窗口
 
 点顶部「对照」开启翻译。不会全文开翻，最多预译下一章。选中文字可「划线 / 想法 / 译此段」。
 
+## Docker / 局域网部署
+
+```bash
+docker compose up --build
+# 或直接：
+docker build -t lumi . && docker run -p 8080:8080 lumi
+```
+
+- 服务默认只监听 `127.0.0.1`；Docker 镜像内显式绑 `0.0.0.0`，以便宿主机端口映射。
+- 写书库、删书的接口受 `LEAF_TOKEN` 保护：设置后只有带同一密钥的请求能写删；不设置时只允许本机写删，非本机写删一律 401。只读浏览不受影响。
+- 生成密钥：`openssl rand -hex 24`，通过环境变量或 `.env`（compose 读 `LEAF_TOKEN`）传入。
+
+## 网络访问
+
+- 打包后的应用只允许 HTTPS 出网请求，不放行明文 `http:`（`connect-src` 与 Tauri HTTP 权限均已去掉通用 `http:` / `http://*:*`）。
+- 保留 `https:` 通配，是因为云端朗读（`cloudBaseUrl`）和 AI 翻译（`aiBaseUrl`）允许用户自填 Base URL，可指向任意 HTTPS 服务（OpenAI、SiliconFlow、自建服务等）；收窄到固定域名会让这些自填地址失效。
+- 已内置的 HTTPS 服务包括：OpenAI、DeepSeek、Azure 朗读（`*.tts.speech.microsoft.com` / `*.cognitiveservices.azure.com`）、微软翻译、谷歌翻译、SiliconFlow。
+- 自填地址若为明文 `http://`，打包后会被拦截；请改用 HTTPS 或通过本机代理。
+
 ## 不做
 
 厂商云同步。不抄 Readest 源码（AGPL）。

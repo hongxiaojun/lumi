@@ -3,13 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
-
-function assertSafeRel(rel: string): string {
-  const normalized = rel.replace(/\\/g, '/').replace(/^\/+/, '')
-  const parts = normalized.split('/').filter(Boolean)
-  if (!parts.length || parts.some((part) => part === '..')) throw new Error('bad path')
-  return parts.join('/')
-}
+import { assertSafeRel } from '../src/lib/aiDb/safePath.ts'
 
 export function defaultLibraryRoot(): string {
   return process.env.LEAF_LIBRARY_DIR || path.join(os.homedir(), '.leaf-reader', 'library')
@@ -52,7 +46,8 @@ export function writeLibrary(
 ): void {
   fs.mkdirSync(root, { recursive: true })
   if (removeSlug) {
-    const dir = path.join(root, assertSafeRel(removeSlug))
+    const dir = path.resolve(path.join(root, assertSafeRel(removeSlug)))
+    if (dir === path.resolve(root)) throw new Error('refusing to remove library root')
     fs.rmSync(dir, { recursive: true, force: true })
   }
   for (const [rel, content] of Object.entries(files)) {

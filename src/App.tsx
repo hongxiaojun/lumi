@@ -64,6 +64,8 @@ import {
   seedHubIfEmpty,
 } from './lib/hub/client'
 import { prefsWithLook } from './lib/bookLook'
+import { createProgressSaver, type ProgressSaver } from './lib/progressSave'
+import { trace } from './lib/persistTrace'
 import { droppedRecord } from './lib/shelfIndex'
 import { randomId } from './lib/id'
 import { openAllowed, upsertBook } from './lib/parseGate'
@@ -127,6 +129,23 @@ export default function App() {
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)
   }, [])
+  // D-03：隐藏、关闭页面、卸载时立刻落盘挂起的进度，不等 400ms 防抖。
+  useEffect(() => {
+    const flushNow = () => void flushProgressRef.current()
+    const onVisibility = () => {
+      trace('visibility', { state: document.visibilityState })
+      if (document.visibilityState === 'hidden') flushNow()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', flushNow)
+    window.addEventListener('beforeunload', flushNow)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', flushNow)
+      window.removeEventListener('beforeunload', flushNow)
+      flushNow()
+    }
+  }, [])
   const [notes, setNotes] = useState<Annotation[]>([])
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [account, setAccount] = useState<string | null>(null)
@@ -135,7 +154,41 @@ export default function App() {
   const [parsePending, setParsePending] = useState<{ name: string; fraction: number } | null>(null)
   const [userFonts, setUserFonts] = useState<UserFont[]>([])
   const [fontNotice, setFontNotice] = useState<string | null>(null)
-  const progressTimer = useRef<number | null>(null)
+  const [progressFlash, setProgressFlash] = useState<{ text: string; at: number } | null>(null)
+  const progressSaver = useRef<ProgressSaver<LibraryBook> | null>(null)
+  const progressStore = () => {
+    if (!progressSaver.current) {
+      progressSaver.current = createProgressSaver<LibraryBook>({
+        save: async (book) => {
+          const user = deviceId.current
+          trace('save-start', { f: book.fraction, c: book.cfi?.slice(0, 30) })
+          try {
+            if (hubOn.current && user) await saveSharedProgress(user, book)
+            else await putBook(book)
+            trace('save-ok', { f: book.fraction })
+          } catch (error) {
+            trace('save-fail', String(error))
+            throw error
+          }
+        },
+        onError: () => {
+          const text = '阅读进度没有保存成功，请检查设备存储空间后重试'
+          // 两条通道都给：阅读中看到阅读器浮层，回到书架后看到书架通知（关书时才失败的情况）。
+          const flash = { text, at: Date.now() }
+          setProgressFlash(flash)
+          setError(text)
+          window.setTimeout(() => setProgressFlash((cur) => (cur === flash ? null : cur)), 3200)
+        },
+      })
+    }
+    return progressSaver.current
+  }
+  const flushProgress = () => {
+    trace('flush')
+    return progressStore().flush()
+  }
+  const flushProgressRef = useRef(flushProgress)
+  flushProgressRef.current = flushProgress
   const ttsTimer = useRef<number | null>(null)
   const fontLock = useRef(false)
   const hubOn = useRef(false)
@@ -151,6 +204,7 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
+      trace('boot')
       try {
         try {
           await migrateLegacyBooks()
@@ -346,6 +400,9 @@ export default function App() {
   })
 
   async function handleRemove(id: string) {
+    // 删书前先把别的书挂起的进度落盘；若删的就是当前这本，则直接丢弃，免得删除后又被写回一条幽灵记录。
+    if (openId === id) progressStore().cancel()
+    else await flushProgress()
     const book = books.find((row) => row.id === id) ?? (await getBook(id))
     if (hubOn.current) await removeSharedBook(id)
     else await deleteBook(id)
@@ -361,6 +418,8 @@ export default function App() {
   }
 
   async function handleDropRecord(id: string) {
+    // 先把挂起的进度写完，否则「标记未读」会被随后落盘的旧进度覆盖。
+    await flushProgress()
     const known = books.find((row) => row.id === id) ?? (hubOn.current ? null : await getBook(id))
     if (!known) return
     const next = droppedRecord(known)
@@ -372,6 +431,8 @@ export default function App() {
 
   async function handleOpen(id: string, listen = false) {
     if (!openAllowed(parseGates, id)) return
+    // 换书前把上一本挂起的进度落盘，避免被下面的打开动作覆盖掉。
+    await flushProgress()
     const user = deviceId.current
     try {
       const book = hubOn.current && user ? await openSharedBook(user, id) : await getBook(id)
@@ -383,6 +444,7 @@ export default function App() {
       else await putBook(book)
       const look = hubOn.current && user ? await loadBookLook(user, id) : await loadLocalBookLook(id)
       setPrefs(prefsWithLook(templateRef.current, look))
+      trace('open', { id: id.slice(0, 8), f: book.fraction, c: book.cfi?.slice(0, 30) })
       setCurrent(book)
       setOpenId(id)
       await refresh()
@@ -523,18 +585,20 @@ export default function App() {
   }
 
   function handleProgress(patch: { cfi?: string | null; fraction?: number; parallel?: boolean }) {
-    setCurrent((cur) => {
-      if (!cur) return cur
-      const next = { ...cur, ...patch, lastOpenedAt: Date.now() }
-      if (readingPlace(next.fraction) === 'finished') rememberFinished(localStorage, next.id, next.lastOpenedAt)
-      if (progressTimer.current) window.clearTimeout(progressTimer.current)
-      progressTimer.current = window.setTimeout(() => {
-        const user = deviceId.current
-        if (hubOn.current && user) void saveSharedProgress(user, next)
-        else void putBook(next)
-      }, 400)
-      return next
-    })
+    // 合并算在更新器之外，并以 shownRef 当下一次调用的基线：
+    // React 19 会延迟执行更新器，若在里面算 next 再向外赋值，同一帧的连续两次翻页会拿到同一份旧基线、丢掉前一次的字段。
+    const cur = shownRef.current
+    if (!cur) {
+      trace('progress-drop', { f: patch.fraction })
+      return
+    }
+    const next = { ...cur, ...patch, lastOpenedAt: Date.now() }
+    trace('progress', { id: next.id.slice(0, 8), f: next.fraction, c: next.cfi?.slice(0, 30) })
+    shownRef.current = next
+    if (readingPlace(next.fraction) === 'finished') rememberFinished(localStorage, next.id, next.lastOpenedAt)
+    setCurrent(next)
+    // 连续翻页仍走 400ms 防抖；关书、隐藏、卸载时才 flush。
+    progressStore().schedule(next)
   }
 
   async function handleTranslator(next: TranslatorConfig) {
@@ -555,12 +619,12 @@ export default function App() {
   }
 
   async function handleCreateNote(row: Annotation) {
-    let saved = row
-    setNotes((cur) => {
-      const next = mergeAnnotation(cur, row)
-      saved = next.find((item) => item.bookId === row.bookId && item.cfi === row.cfi) ?? row
-      return next
-    })
+    // 在更新器之外用当前笔记列表算出合并结果，再同时更新状态与落盘。
+    // 不能从 setState 更新器里向外赋值再落盘：React 19 可能延迟执行更新器，
+    // 那时 saved 还是传入的新 id 行，同一 CFI 会重复落两条记录。
+    const next = mergeAnnotation(notes, row)
+    const saved = next.find((item) => item.bookId === row.bookId && item.cfi === row.cfi) ?? row
+    setNotes(next)
     const user = deviceId.current
     if (hubOn.current && user) await saveSharedNote(user, saved)
     else await putAnnotation(saved)
@@ -609,7 +673,8 @@ export default function App() {
     setAutoListen(false)
     setListenResume(null)
     setOpenId(null)
-    void refresh()
+    // 先写完挂起的进度再刷新，否则书架会读到旧进度。
+    void flushProgress().then(() => refresh())
   }
 
   function backFromBook() {
@@ -651,6 +716,7 @@ export default function App() {
       onTranslator={handleTranslator}
       onTts={handleTts}
       onProgress={handleProgress}
+      flash={progressFlash}
       onCreateAnnotation={handleCreateNote}
       onUpdateAnnotation={handleUpdateNote}
       onDeleteAnnotation={handleDeleteNote}

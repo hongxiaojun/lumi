@@ -1,4 +1,5 @@
 import { renderAiBook, renderCatalog } from './render'
+import { assertSafeRel } from './safePath'
 import type { AiBook, CatalogEntry } from './types'
 
 export async function persistAiBook(book: AiBook, catalog: CatalogEntry[]): Promise<void> {
@@ -15,6 +16,7 @@ export async function removeAiBook(slug: string, catalog: CatalogEntry[]): Promi
 }
 
 async function writeLibraryFiles(files: Record<string, string>, removeSlug?: string): Promise<void> {
+  if (removeSlug) assertSafeRel(removeSlug)
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core')
     await invoke('save_ai_library', { files, removeSlug: removeSlug ?? null })

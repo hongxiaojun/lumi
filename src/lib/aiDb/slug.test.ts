@@ -20,6 +20,13 @@ describe('bookSlug', () => {
     expect(bookSlug('///')).toBe('untitled')
   })
 
+  it('never returns a dot or parent-dot path that would land on the library root', () => {
+    expect(bookSlug('.')).toBe('untitled')
+    expect(bookSlug('. ')).toBe('untitled')
+    expect(bookSlug('..')).toBe('untitled')
+    expect(bookSlug('...')).toBe('untitled')
+  })
+
   it('caps length at 80 characters', () => {
     expect(bookSlug('a'.repeat(120)).length).toBeLessThanOrEqual(80)
   })

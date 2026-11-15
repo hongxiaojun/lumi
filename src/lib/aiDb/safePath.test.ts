@@ -10,10 +10,19 @@ describe('assertSafeRel', () => {
   it('rejects parent-directory escapes', () => {
     expect(() => assertSafeRel('../secret')).toThrow()
     expect(() => assertSafeRel('a/../../etc/passwd')).toThrow()
+    expect(() => assertSafeRel('foo/../..')).toThrow()
   })
 
-  it('rejects empty paths', () => {
+  it('rejects a bare dot and dot-slash variants that resolve to the root', () => {
+    expect(() => assertSafeRel('.')).toThrow()
+    expect(() => assertSafeRel('./')).toThrow()
+    expect(() => assertSafeRel('.//.')).toThrow()
+  })
+
+  it('rejects empty and absolute paths', () => {
     expect(() => assertSafeRel('')).toThrow()
     expect(() => assertSafeRel('/')).toThrow()
+    expect(() => assertSafeRel('/etc/passwd')).toThrow()
+    expect(() => assertSafeRel('C:/Windows/system32')).toThrow()
   })
 })

@@ -62,11 +62,21 @@ describe('notesForBook', () => {
 })
 
 describe('mergeAnnotation', () => {
-  it('updates color in place when the same sentence is highlighted again', () => {
+  it('keeps one record and the original id when the same sentence is highlighted again', () => {
     const first = createAnnotation({ bookId: 'a', cfi: 'epubcfi(/6/4!/4/2:0)', text: 'Hello', color: 'yellow', now: 1 })
     const second = createAnnotation({ bookId: 'a', cfi: 'epubcfi(/6/4!/4/2:0)', text: 'Hello', color: 'blue', now: 2 })
     const merged = mergeAnnotation([first], second)
     expect(merged).toHaveLength(1)
+    expect(merged[0].id).toBe(first.id)
+    expect(merged[0].id).not.toBe(second.id)
     expect(merged[0].color).toBe('blue')
+  })
+
+  it('prepends a brand-new cfi as its own record', () => {
+    const first = createAnnotation({ bookId: 'a', cfi: 'epubcfi(/6/4!/4/2:0)', text: 'Hello', color: 'yellow', now: 1 })
+    const other = createAnnotation({ bookId: 'a', cfi: 'epubcfi(/6/4!/4/4:0)', text: 'World', color: 'green', now: 2 })
+    const merged = mergeAnnotation([first], other)
+    expect(merged).toHaveLength(2)
+    expect(merged[0].id).toBe(other.id)
   })
 })

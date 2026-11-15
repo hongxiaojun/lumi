@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
@@ -7,18 +8,58 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const dist = path.resolve(here, '../dist')
 const libraryRoot = process.env.LEAF_LIBRARY_DIR || path.join(here, '../data/library')
 const port = Number(process.env.PORT || 8080)
+// 默认只对本机开放。要对局域网 / NAS 开放，必须显式设 LEAF_BIND_HOST=0.0.0.0 并配 LEAF_TOKEN。
+const bindHost = process.env.LEAF_BIND_HOST || '127.0.0.1'
+const token = process.env.LEAF_TOKEN || ''
+const loopbackHosts = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost'])
 
+function isLoopback(req) {
+  return loopbackHosts.has(req.socket.remoteAddress)
+}
+
+/** Accepts `X-Leaf-Token: <token>` or `Authorization: Bearer <token>`. */
+function requestToken(req) {
+  const direct = req.headers['x-leaf-token']
+  if (typeof direct === 'string' && direct) return direct
+  const auth = req.headers.authorization
+  if (typeof auth === 'string' && auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim()
+  return ''
+}
+
+function timingSafeEqual(a, b) {
+  const ab = Buffer.from(a)
+  const bb = Buffer.from(b)
+  if (ab.length !== bb.length) return false
+  return crypto.timingSafeEqual(ab, bb)
+}
+
+/** Write endpoints are guarded: with a token, only a matching request writes;
+ * without one, only the local machine writes. */
+function writeAuthorized(req) {
+  if (token) return timingSafeEqual(requestToken(req), token)
+  return isLoopback(req)
+}
+
+// 与 src/lib/aiDb/safePath.ts 保持同一套规则：独立 server 无构建步骤、无法 import TS，
+// 改这条规则时必须两处同步，否则两个后端行为会漂移。
 function assertSafeRel(rel) {
-  const normalized = String(rel).replace(/\\/g, '/').replace(/^\/+/, '')
+  const normalized = String(rel).replace(/\\/g, '/')
+  if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:\//.test(normalized)) {
+    throw new Error('bad path')
+  }
   const parts = normalized.split('/').filter(Boolean)
-  if (!parts.length || parts.some((part) => part === '..')) throw new Error('bad path')
+  if (!parts.length || parts.some((part) => part === '.' || part === '..')) {
+    throw new Error('bad path')
+  }
   return parts.join('/')
 }
 
 function writeLibrary(files, removeSlug) {
   fs.mkdirSync(libraryRoot, { recursive: true })
   if (removeSlug) {
-    fs.rmSync(path.join(libraryRoot, assertSafeRel(removeSlug)), { recursive: true, force: true })
+    const dir = path.resolve(path.join(libraryRoot, assertSafeRel(removeSlug)))
+    if (dir === path.resolve(libraryRoot)) throw new Error('refusing to remove library root')
+    fs.rmSync(dir, { recursive: true, force: true })
   }
   for (const [rel, content] of Object.entries(files ?? {})) {
     const dest = path.join(libraryRoot, assertSafeRel(rel))
@@ -68,6 +109,10 @@ const server = http.createServer((req, res) => {
     return
   }
   if (url.pathname === '/__leaf-ai-db' && req.method === 'POST') {
+    if (!writeAuthorized(req)) {
+      send(res, 401, JSON.stringify({ error: 'unauthorized' }))
+      return
+    }
     void readBody(req)
       .then((raw) => {
         const body = JSON.parse(raw)
@@ -101,6 +146,12 @@ const server = http.createServer((req, res) => {
 })
 
 fs.mkdirSync(libraryRoot, { recursive: true })
-server.listen(port, '0.0.0.0', () => {
-  console.log(`叶读 listening on ${port}, library at ${libraryRoot}`)
+if (!loopbackHosts.has(bindHost) && !token) {
+  console.warn(
+    `[leaf] 服务监听在 ${bindHost}，但没有设置 LEAF_TOKEN：非本机的写库/删书请求都会被拒绝（401）。` +
+      '要对局域网开放，请设置 LEAF_TOKEN。',
+  )
+}
+server.listen(port, bindHost, () => {
+  console.log(`叶读 listening on ${bindHost}:${port}, library at ${libraryRoot}`)
 })

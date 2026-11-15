@@ -6,6 +6,12 @@ services:
     environment:
       PORT: "8080"
       LEAF_LIBRARY_DIR: /data/library
+      # 容器内要绑 0.0.0.0 才能让上面的端口映射进来。
+      LEAF_BIND_HOST: "0.0.0.0"
+      # 从非本机（局域网 / NAS 之外的设备）写库或删书，必须设置这个共享密钥。
+      # 不设时，非本机的写删请求一律返回 401，只读访问不受影响。
+      # 生成示例：openssl rand -hex 24
+      LEAF_TOKEN: ${LEAF_TOKEN:-}
     volumes:
       - leaf-library:/data/library
     restart: unless-stopped
