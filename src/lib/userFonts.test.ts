@@ -339,7 +339,7 @@ describe('global font', () => {
     expect(template.font).toBe('localkai')
   })
 
-  it('uses the added face for Chinese and Newsreader for English', () => {
+  it('uses the added face for Chinese and the bundled Goeist Serif for English', () => {
     const id = userFontId('abc')
     expect(isUserFontId(id)).toBe(true)
     expect(isUserFontId('user:')).toBe(false)
@@ -347,11 +347,11 @@ describe('global font', () => {
     expect(fontStack(id)).toBe('"leaf-user-abc", "Songti SC", "Noto Serif SC", serif')
     expect(fontStack('user:"></style>' as never)).not.toContain('style')
     expect(fontForScript(id, 'zh')).toBe(id)
-    expect(fontForScript(id, 'en')).toBe('newsreader')
+    expect(fontForScript(id, 'en')).toBe('goeistSerif')
     expect(readerCSS({ ...DEFAULT_PREFS, font: id }, 'zh', '')).toContain('leaf-user-abc')
     const english = readerCSS({ ...DEFAULT_PREFS, font: id }, 'en', '')
     expect(english).not.toContain('leaf-user-abc')
-    expect(english).toContain('Newsreader')
+    expect(english).toContain('"Goeist Serif"')
   })
 
   it('drops a removed face and returns the default only when that face was global', () => {

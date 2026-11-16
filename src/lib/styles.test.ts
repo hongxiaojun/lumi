@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   bookCSS,
   DEFAULT_PREFS,
+  ENGLISH_DEFAULT,
   fontForScript,
   fontStack,
   readerCSS,
@@ -169,13 +170,21 @@ describe('Xiaolai page color', () => {
 })
 
 describe('fontForScript', () => {
-  it('swaps CJK faces for Newsreader when the book is English', () => {
-    expect(fontForScript('song', 'en')).toBe('newsreader')
-    expect(fontForScript('kai', 'en')).toBe('newsreader')
-    expect(fontForScript('hei', 'en')).toBe('newsreader')
-    expect(fontForScript('wenkai', 'en')).toBe('newsreader')
-    expect(fontForScript('kinghwa', 'en')).toBe('newsreader')
-    expect(fontForScript('zhuque', 'en')).toBe('newsreader')
+  it('swaps CJK faces for the bundled Goeist Serif when the book is English', () => {
+    expect(fontForScript('song', 'en')).toBe('goeistSerif')
+    expect(fontForScript('kai', 'en')).toBe('goeistSerif')
+    expect(fontForScript('hei', 'en')).toBe('goeistSerif')
+    expect(fontForScript('wenkai', 'en')).toBe('goeistSerif')
+    expect(fontForScript('kinghwa', 'en')).toBe('goeistSerif')
+    expect(fontForScript('zhuque', 'en')).toBe('goeistSerif')
+  })
+
+  it('reads an English book in Goeist Serif with nothing chosen', () => {
+    const face = fontForScript(DEFAULT_PREFS.font, 'en')
+    expect(face).toBe(ENGLISH_DEFAULT)
+    const css = bookCSS({ ...DEFAULT_PREFS, font: face }, 'en')
+    expect(css).toContain('font-family: "Goeist Serif"')
+    expect(css).not.toMatch(/font-family: "Newsreader"/)
   })
 
   it('keeps an English face the user already chose', () => {
@@ -217,7 +226,7 @@ describe('fontForScript', () => {
     expect(stack).toContain('"Kaiti SC"')
     expect(stack).not.toMatch(/url\(|mianfeiziti/)
     expect(fontForScript('localkai', 'zh')).toBe('localkai')
-    expect(fontForScript('localkai', 'en')).toBe('newsreader')
+    expect(fontForScript('localkai', 'en')).toBe(ENGLISH_DEFAULT)
     expect(bookCSS({ ...DEFAULT_PREFS, font: 'localkai' }, 'zh')).toContain('仓耳今楷02-6763 W04')
   })
 })

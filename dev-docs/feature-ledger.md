@@ -152,7 +152,7 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 | ID  | 能力                | 叶读 | 说明                                                                      |
 | --- | ----------------- | -- | ----------------------------------------------------------------------- |
 | M20 | 中文纸书节奏            | 已有 | 首行缩进、段距紧、标题居中。中西文间距、标点挤压和标点不拆行由页面绘制，不改原句                                |
-| M21 | 英文导入后重排           | 已有 | 去出版商样式、拼硬换行、Newsreader、段距、左标题、素页。连字、字距和连续断词不超过两行由页面绘制，不改原句              |
+| M21 | 英文导入后重排           | 已有 | 去出版商样式、拼硬换行、Goeist Serif、段距、左标题、素页。连字、字距和连续断词不超过两行由页面绘制，不改原句              |
 | M22 | 对照翻译（当前章 + 预译下一章） | 已有 | 禁止默认全书开翻                                                                |
 | M23 | 每书 AI 书库          | 已有 | `~/.leaf-reader/library/<slug>/`：AI.md、digest、chapters、chunks。导入或首次打开生成 |
 | M24 | 飞牛 NAS Docker     | 部分 | 2026-11-15 已在飞牛真机（x86_64，`10.10.10.8:8080`）跑通：镜像在 NAS 上 build，卷 `lumi-library` 挂 `/vol1/docker/volumes/lumi-library/_data`。从 Mac 核对：`/health` 200、首页 200、`?token=` 302 并下发 HttpOnly cookie、带 cookie POST 200、无凭证 POST 401、`removeSlug: "."` 400、删 `<slug>` 目录 200。卷内 `AI.md` / `chapters/` / `INDEX.md` 落盘，`docker restart` 后仍在。容器里从宿主机访问也走网桥、不算 loopback，所以必须设 `LEAF_TOKEN`。本机没装 `docker compose` 插件，README 给等价的 `docker build` + `docker run`，并写明镜像架构要跟目标机一致。重部署走 `scripts/deploy-nas.sh`（rsync → NAS 上 build → 换容器 → 查 `/health` → 打印带 token 的打开地址）。还差：SMB/NFS 网络盘怎么对待（改名、锁、原子写入会丢，不对着网络挂载做扫描）、NAS 开机自启与升级流程。 |
@@ -230,8 +230,8 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 
 - 书架：封面、导入、删除、续读、试读本
 - 阅读：分页/滚动、滚轮跨章、键盘、无铬点击、目录
-- 纸感：十种纸色；中文缩进；英文重排 + Newsreader + 素页
-- 字体：思源宋/黑、仿宋、楷、圆、苹方、Palatino、Newsreader
+- 纸感：十种纸色；中文缩进；英文重排 + Goeist Serif + 素页
+- 字体：思源宋/黑、仿宋、楷、圆、苹方、Palatino、Goeist Serif / Sans / Mono、Newsreader
 - 进度：全书条、可拖、低饱和虹彩
 - 划线六色、想法、笔记侧栏、CFI、书签
 - 书内全文搜索
@@ -388,3 +388,4 @@ Lumi 不是：书店、社交网络、听书 App、Calibre、PDF 工作站、Rea
 | 2026-11-15 | M13：补 PDF 阅读正确性。① 栏序：`layout.ts` 用端点直方图找「没有整行横穿的竖带」当栏沟，只统计实心行，通栏大标题不会把沟埋掉；候选沟按最宽排序逐个验收，因为杂志把花边栏顶在右切口，最宽的带常是外边距。验收看两侧中位行宽而不是几何宽度——外切口里的页码会把 `maxX` 撑大，让切得很好的页以 485/0 落选。三栏靠「同宽取近中线」先切出两整栏再递归。② 跨沟行归属按两侧各占多少判定，原来的公式算的是「压住沟多少」，把每条未到沟的短行都记成右栏，单栏书因此误切；这个错是拿 `探讨定投` 第 1 页复现出来的，已在 `layout.guard.test.ts` 补一条 ragged right 用例守住。③ 去页码与页眉页脚（`headers.ts`），按行文本的页外位置和重复度判，正文顶行的引文不误伤。④ 英文行尾断词接回（`typeset.ts`），`con-` + `tinue` 合成 `inconclusive`，行内 `well-known` 和句末破折号不动；判据是下一行以小写开。⑤ 合成书 `xml:lang` 跟随书语言。真书核对：`探讨定投`（16 页）、`Machines of Loving Grace`（29 页）、`actor-reactor` 三本单栏书改序页数都是 0；`Feeds, Feelings, and Focus`（22 页双栏期刊）17 页改序，抽段落前后对比可读；`Scientific American 2023-01`（100 页）10 页改序，杂志花边栏和大图页仍有噪声，按计划不做版面区块识别。`pnpm test` 825 过、`lint` 0 错、`build` 过。 |
 | 2026-11-16 | M13：PDF 重排三轮续修。① `cluster.ts` 先按基线把 run 分桶再配对，内容流按栏书写时不再把左栏尾巴接上右栏开头；同一基线两 run 的间距按较小字号的 em 判，比正文大一磅的小标题不再把栏沟算窄（18pt 沟对 10pt 标题曾读成 1.79em）。② `typeset.ts` 续行只从跑满栏宽的行接：`Results` 这类行内小标题的短行之后不再吞并下一行，页码和表格单元同理；行尾是数字时不接（参考文献、URL）；词后接左括号补回空格；行尾连字符只在下一行小写开头时去掉，大写保留连字符（三栏信页把 `informa-` 和 `Use` 焊成 `informaUse`）。合并硬换行后折掉两端对齐多出来的空格，`pre`/`code` 与全角空格不动。③ `layout.ts` 先竖切栏，切不动才在整页按行距切成横块、块内再找沟：摘要跨沟的期刊首页、被通栏图注插断的双栏页都能恢复栏序，单栏页的段落间隙不再被当成块。④ `headers.ts` 重复书眉改按「出现页数 ≥ 全书的 40%」判，同页出现两次只算一页证据：隔页轮换的标题页眉与作者页眉都能去掉，只在两页出现的资助说明留下。真书核对：`Feeds, Feelings, and Focus`（22 页双栏）去掉 43 行页眉页脚，`AUTHOR ET AL`、`SHORT-FORM VIDEOS AND HEALTH` 计数归零，改序页 22/22（原 17）；`Scientific American 2023-01`（100 页）改序 18 页（原 10），第 10 页逐字对照基线一致，杂志花边栏与文字框噪声仍在，按计划不做版面区块识别。`pnpm test` 853 过、`lint` 0 错、`build` 过。 |
 | 2026-11-16 | M6：阅读字体加入 Goeist 三款（Sans / Mono / Serif），拉丁字形，SIL OFL 1.1，随包内嵌。文件在 `public/fonts/goeist`（woff2；Sans、Mono 用 100–900 变量文件并各自带斜体，Serif 只有 400 静态一款，元素形状轴留在源包不动），许可证 `OFL.txt` 与 `AUTHORS.txt` 同目录。`HOSTED_FONTS` 增加可选的 `weight` 与 `italic`，静态款不再谎报 100–900。三款不进 `CJK_FONTS`，所以英文书选它就是它（不再回落 Newsreader），中文书里则只作用于西文，汉字落到 Noto Serif SC / Noto Sans SC。默认字体仍是仓耳今楷与 Newsreader，不换。`public/fonts/` 在 `.gitignore` 里，OFL 这两款按既有京華、LXGW 的做法 `-f` 入库。`pnpm test` 857 过、`lint` 0 错、`build` 过，`dist/fonts/goeist` 有全部六个文件。真书观感未走查。 |
+| 2026-11-16 | M6：英文书默认字体换成 Goeist Serif。改的是 `fontForScript` 在英文书里的回落（现在是常量 `ENGLISH_DEFAULT`）：没单独挑过字体的英文书、以及自加字体在英文书里，都落到这款随包字体，不再走 Newsreader。Newsreader 仍在字体列表可选，已经存下它 id 的书不受影响；中文书默认仍是仓耳今楷。M21 的说明、`pdf-import.md` 的产品描述与第 7 节现状清单同步改。`pnpm test` 858 过、`lint` 0 错、`build` 过。真书观感未走查。 |

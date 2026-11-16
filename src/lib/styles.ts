@@ -155,8 +155,14 @@ const CJK_FONTS: ReadonlySet<BuiltinFontId> = new Set([
 
 export type TypesetScript = 'zh' | 'en'
 
+/** What an English book reads in when the chosen face is Chinese-first or the
+ * reader's own file. Goeist Serif ships with the app under the OFL, so this
+ * default needs no file from the Mac. Newsreader stays in the list for anyone
+ * who likes it. */
+export const ENGLISH_DEFAULT: BuiltinFontId = 'goeistSerif'
+
 export function fontForScript(font: FontId, script: TypesetScript): FontId {
-  if (script === 'en' && (isUserFontId(font) || CJK_FONTS.has(font as BuiltinFontId))) return 'newsreader'
+  if (script === 'en' && (isUserFontId(font) || CJK_FONTS.has(font as BuiltinFontId))) return ENGLISH_DEFAULT
   return font
 }
 
