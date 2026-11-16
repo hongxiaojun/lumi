@@ -191,6 +191,11 @@ export function bookCSS(
   const bodyFace = pinnedBodyFace(stack)
   const dark = Boolean(theme.dark)
   const type = script === 'en' ? englishType(prefs, stack, theme.fg) : chineseType(prefs, theme.fg)
+  // Ink spreads into paper fiber, so a printed glyph never has a crisp edge.
+  // One fiftieth of an em follows currentColor and arrives as a soft edge
+  // rather than a glow; on a dark paper the same halo reads as bloom, so the
+  // light papers get it alone.
+  const bleed = dark ? '' : 'text-shadow: 0 0 0.018em currentColor;'
   return `
     @namespace epub "http://www.idpf.org/2007/ops";
     ${bodyFace.css}
@@ -205,6 +210,7 @@ export function bookCSS(
       font-size: ${prefs.fontSize}px !important;
       font-weight: 400;
       letter-spacing: ${script === 'en' ? '0' : '0.02em'};
+      ${bleed}
       -webkit-touch-callout: none;
       -webkit-user-select: text;
       user-select: text;

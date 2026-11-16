@@ -545,6 +545,7 @@ export function Reader({
         listen.active && listenChrome === 'mini' ? 'listening-mini' : '',
         listen.active && listenChrome === 'hidden' ? 'listening-hidden' : '',
       ].filter(Boolean).join(' ')}>
+        {!theme.dark && <div className="paper-grain" aria-hidden="true" />}
         <FoliateHost
           file={file}
           listening={listening}

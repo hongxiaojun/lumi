@@ -21,6 +21,12 @@ describe('bookCSS profiles', () => {
     expect(zh).toMatch(/hyphens:\s*none/)
   })
 
+  it('lets the ink spread a hair, except on dark papers', () => {
+    expect(zh).toMatch(/body\s*\{[^}]*text-shadow:\s*0 0 0\.018em currentColor/s)
+    const night = bookCSS({ ...DEFAULT_PREFS, theme: 'night' }, 'zh')
+    expect(night).not.toContain('0 0 0.018em')
+  })
+
   it('uses an added font itself, so switching it changes the page', () => {
     const first = bookCSS({ ...DEFAULT_PREFS, font: 'user:one' }, 'zh')
     const second = bookCSS({ ...DEFAULT_PREFS, font: 'user:two' }, 'zh')

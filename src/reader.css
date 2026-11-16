@@ -35,6 +35,21 @@
 }
 .reader-main .chrome.top,
 .reader-main .chrome-row { flex-wrap: wrap; }
+/* The grain belongs to the screen, not to the page: it stays put while the
+   text scrolls under it, which is also the only version the compositor can
+   paint once. The tile carries its own alpha, so no blend mode is needed to
+   reach through the book's iframe. Above the book (1), below the chrome (3).
+   Dark papers are left flat — a backlight has no paper tooth to show. */
+.paper-grain {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background-image: url('/grain.png');
+  background-repeat: repeat;
+  background-size: 128px 128px;
+  opacity: 0.35;
+}
 .split-handle {
   position: absolute;
   top: 0;
@@ -536,7 +551,7 @@ foliate-view::part(foot) {
   letter-spacing: 0.02em;
 }
 .book-menu-back {
-  opacity: 0.5;
+  opacity: 0.35;
 }
 .book-menu-mark {
   border-radius: 10px;
