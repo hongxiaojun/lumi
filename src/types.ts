@@ -25,6 +25,9 @@ export type BuiltinFontId =
   | 'yuan'
   | 'pingfang'
   | 'palatino'
+  | 'goeistSerif'
+  | 'goeistSans'
+  | 'goeistMono'
   | 'newsreader'
 /** `user:` plus the app token for a face stored only on this Mac. */
 export type FontId = BuiltinFontId | `user:${string}`

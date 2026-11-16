@@ -32,4 +32,27 @@ describe('hosted reading fonts', () => {
     expect(hostedStack('kinghwa', '"Noto Serif SC", serif')).toContain('京華老宋体')
     expect(hostedStack('song', '"Noto Serif SC", serif')).toBe('"Noto Serif SC", serif')
   })
+
+  it('declares the Goeist serif at the one weight the file has', () => {
+    const serif = css.split('\n').filter((face) => face.includes('"Goeist Serif"'))
+    expect(serif).toHaveLength(1)
+    expect(serif[0]).toContain('font-weight:400')
+    expect(serif[0]).toContain('http://127.0.0.1:5173/fonts/goeist/GoeistSerif-Regular.woff2')
+    expect(serif[0]).toContain('format("woff2")')
+  })
+
+  it('gives the Goeist sans and mono an italic face beside the variable range', () => {
+    const sans = css.split('\n').filter((face) => face.includes('"Goeist"'))
+    expect(sans).toHaveLength(2)
+    expect(sans[0]).toContain('font-weight:100 900')
+    expect(sans[0]).toContain('/fonts/goeist/Goeist-Variable.woff2')
+    expect(sans[1]).toContain('font-style:italic')
+    expect(sans[1]).toContain('/fonts/goeist/Goeist-Italic-Variable.woff2')
+    const mono = css.split('\n').filter((face) => face.includes('"Goeist Mono"'))
+    expect(mono.some((face) => face.includes('GoeistMono-Italic-Variable.woff2'))).toBe(true)
+  })
+
+  it('puts the Goeist family ahead of the fallback in its stack', () => {
+    expect(hostedStack('goeistSerif', '"Newsreader", serif')).toBe('"Goeist Serif", "Newsreader", serif')
+  })
 })

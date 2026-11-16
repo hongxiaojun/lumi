@@ -11,7 +11,12 @@ type HostedFont = {
   family: string
   locals: readonly string[]
   file: string
-  format: 'truetype'
+  format: 'truetype' | 'woff2'
+  /** Weight range the file covers. A static cut declares its one weight, or the
+   * browser stretches it into a range and synthesises the rest. */
+  weight?: string
+  /** Italic file, when the family ships one. */
+  italic?: string
 }
 
 // Unmodified files in public/fonts. The book lives in a blob iframe, so the
@@ -39,6 +44,30 @@ export const HOSTED_FONTS: readonly HostedFont[] = [
     file: '/fonts/ZhuqueFangsong-Regular.ttf',
     format: 'truetype',
   },
+  {
+    id: 'goeistSerif',
+    family: 'Goeist Serif',
+    locals: ['Goeist Serif'],
+    file: '/fonts/goeist/GoeistSerif-Regular.woff2',
+    format: 'woff2',
+    weight: '400',
+  },
+  {
+    id: 'goeistSans',
+    family: 'Goeist',
+    locals: ['Goeist'],
+    file: '/fonts/goeist/Goeist-Variable.woff2',
+    format: 'woff2',
+    italic: '/fonts/goeist/Goeist-Italic-Variable.woff2',
+  },
+  {
+    id: 'goeistMono',
+    family: 'Goeist Mono',
+    locals: ['Goeist Mono'],
+    file: '/fonts/goeist/GoeistMono-Variable.woff2',
+    format: 'woff2',
+    italic: '/fonts/goeist/GoeistMono-Italic-Variable.woff2',
+  },
 ]
 
 export function hostedStack(id: FontId, fallback: string): string {
@@ -52,7 +81,12 @@ export function hostedFontFaces(origin: string): string {
   return HOSTED_FONTS.map((font) => {
     const href = new URL(font.file, origin).href
     const locals = font.locals.map((name) => `local("${name}")`).join(',')
-    return `@font-face{font-family:"${font.family}";font-weight:100 900;font-style:normal;font-display:swap;src:${locals},url("${href}") format("${font.format}");}`
+    const weight = font.weight ?? '100 900'
+    const upright = `@font-face{font-family:"${font.family}";font-weight:${weight};font-style:normal;font-display:swap;src:${locals},url("${href}") format("${font.format}");}`
+    if (!font.italic) return upright
+    const italicHref = new URL(font.italic, origin).href
+    const italic = `@font-face{font-family:"${font.family}";font-weight:${weight};font-style:italic;font-display:swap;src:url("${italicHref}") format("${font.format}");}`
+    return `${upright}\n${italic}`
   }).join('\n')
 }
 

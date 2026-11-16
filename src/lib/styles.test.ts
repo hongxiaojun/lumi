@@ -183,6 +183,19 @@ describe('fontForScript', () => {
     expect(fontForScript('newsreader', 'en')).toBe('newsreader')
   })
 
+  it('offers Goeist as a Latin face for English books and Chinese ones alike', () => {
+    // Goeist carries no CJK, so it is not in the swap set: an English book keeps
+    // the reader's choice, and a Chinese book keeps it for the Latin runs.
+    expect(fontForScript('goeistSerif', 'en')).toBe('goeistSerif')
+    expect(fontForScript('goeistSans', 'en')).toBe('goeistSans')
+    expect(fontForScript('goeistMono', 'en')).toBe('goeistMono')
+    expect(fontForScript('goeistSans', 'zh')).toBe('goeistSans')
+    expect(fontStack('goeistSerif')).toContain('"Goeist Serif"')
+    expect(fontStack('goeistSans')).toContain('"Goeist"')
+    expect(fontStack('goeistMono')).toContain('"Goeist Mono"')
+    expect(bookCSS({ ...DEFAULT_PREFS, font: 'goeistSerif' }, 'en')).toContain('Goeist Serif')
+  })
+
   it('does not swap faces for Chinese books', () => {
     expect(fontForScript('song', 'zh')).toBe('song')
     expect(fontForScript('newsreader', 'zh')).toBe('newsreader')

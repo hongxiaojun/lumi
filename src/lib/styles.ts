@@ -85,6 +85,21 @@ export const FONTS: { id: BuiltinFontId; name: string; stack: string }[] = [
     stack: '"Palatino", "Palatino Linotype", "Iowan Old Style", Georgia, "Noto Serif SC", serif',
   },
   {
+    id: 'goeistSerif',
+    name: 'Goeist Serif',
+    stack: hostedStack('goeistSerif', '"Newsreader", "Iowan Old Style", "Noto Serif SC", serif'),
+  },
+  {
+    id: 'goeistSans',
+    name: 'Goeist Sans',
+    stack: hostedStack('goeistSans', '"Noto Sans SC", "Heiti SC", sans-serif'),
+  },
+  {
+    id: 'goeistMono',
+    name: 'Goeist Mono',
+    stack: hostedStack('goeistMono', '"SF Mono", Menlo, "Noto Sans SC", monospace'),
+  },
+  {
     id: 'newsreader',
     name: 'Newsreader',
     stack: '"Newsreader", "Iowan Old Style", "Palatino", Georgia, serif',
