@@ -345,6 +345,58 @@ describe('restyleEnglishDocument', () => {
     )
   })
 
+  it('keeps the hyphen when the next fragment opens a new sentence', () => {
+    // A three-column letters page put "black hole informa-" above "Use of this
+    // algorithm might begin to change…". The hyphen ends one word, the capital
+    // starts another, and dropping the hyphen printed "informaUse". Keeping it
+    // leaves a mark a reader can see, which beats inventing a word.
+    const doc = parse(
+      '<p>In his article on the black hole informa-</p>' +
+        '<p>Use of this algorithm might begin to change the value</p>',
+    )
+    restyleEnglishDocument(doc)
+    expect(doc.querySelectorAll('p')).toHaveLength(1)
+    expect(text(doc)).toBe(
+      'In his article on the black hole informa-Use of this algorithm might begin to change the value',
+    )
+  })
+
+  it('keeps the hyphen of a name or compound broken at the line end', () => {
+    // The same rule covers the ordinary case: "Herrera-" over "Gutiérrez,"
+    // is one name, and the hyphen belongs to it.
+    const doc = parse(
+      '<p>The authors of the study were Lan Nguyen, Jared Walters, and Ana Herrera-</p>' +
+        '<p>Gutiérrez, all of the School of Applied Psychology at Griffith</p>',
+    )
+    restyleEnglishDocument(doc)
+    expect(text(doc)).toContain('Ana Herrera-Gutiérrez, all of the School')
+  })
+
+  it('folds the extra word spacing a justified line bakes in', () => {
+    // pdf.js reports justification as wider gaps, so the run reaches the text
+    // with two spaces: "effect size,  r  =  −.34".
+    const doc = parse(
+      '<p>poorer cognition (moderate mean effect size,  r  =  −.34), and these  findings hold.</p>',
+    )
+    restyleEnglishDocument(doc)
+    expect(doc.body.textContent).toBe(
+      'poorer cognition (moderate mean effect size, r = −.34), and these findings hold.',
+    )
+  })
+
+  it('leaves whitespace inside a preformatted block alone', () => {
+    const doc = parse('<pre>col    one</pre><p>body    text</p>')
+    restyleEnglishDocument(doc)
+    expect(doc.querySelector('pre')?.textContent).toBe('col    one')
+    expect(doc.querySelector('p')?.textContent).toBe('body text')
+  })
+
+  it('keeps an ideographic-space indent', () => {
+    const doc = parse('<p>\u3000\u3000两个黄鹂鸣翠柳</p>')
+    restyleDocument(doc, 'zh')
+    expect(doc.body.textContent).toBe('\u3000\u3000两个黄鹂鸣翠柳')
+  })
+
   it('keeps a hyphen that sits inside the line', () => {
     const doc = parse('<p>The well-known result was never the</p><p>job that paid the bills.</p>')
     restyleEnglishDocument(doc)

@@ -1,6 +1,10 @@
 import type { PdfLine } from './cluster'
 
 const ZONE = 0.08
+/** A journal alternates its running heads: the title on one page, the author on
+ * the next. Demanding a witness on every page therefore removes neither, so the
+ * repeat is measured against the pages that print any margin text at all. */
+const REPEAT_SHARE = 0.4
 /** A folio, in the shapes real books use: 12, -12-, 12/345, 12 of 345, 第12页,
  * 第12页/共345页, Page 12, iv, XII. The whole line has to match, so a numbered
  * list item ("1. 引言") or a year inside a sentence never qualifies. */
@@ -37,14 +41,17 @@ function repeatedMargins(pages: PdfLine[][], pageHeights: number[]): Set<string>
   const counts = new Map<string, number>()
   pages.forEach((lines, i) => {
     const h = pageHeights[i] ?? 800
+    // One witness per page: a head printed twice on the same page is still one
+    // page of evidence.
+    const keys = new Set<string>()
     for (const line of lines) {
       if (!inMargin(line, h)) continue
       const key = normalize(line.text)
-      if (!key) continue
-      counts.set(key, (counts.get(key) ?? 0) + 1)
+      if (key) keys.add(key)
     }
+    for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1)
   })
-  const need = Math.max(2, pages.length - 1)
+  const need = Math.max(2, Math.ceil(pages.length * REPEAT_SHARE))
   return new Set([...counts.entries()].filter(([, n]) => n >= need).map(([key]) => key))
 }
 

@@ -65,6 +65,32 @@ describe('stripRepeatedMargins', () => {
     expect(cleaned[0].map((l) => l.text)).toEqual(['正文。'])
   })
 
+  it('drops running heads that alternate from page to page', () => {
+    // A journal prints the title on one page and the author on the next, so
+    // neither string is on every page and a one-witness-per-page rule leaves
+    // both of them in the body.
+    const pages = Array.from({ length: 8 }, (_, i) => [
+      line(i % 2 ? 'AUTHOR ET AL.' : 'SHORT-FORM VIDEOS AND HEALTH', 760),
+      line(`正文第 ${i} 段。`, 600),
+      line(`${i + 1}`, 20),
+    ])
+    const cleaned = stripRepeatedMargins(pages, pages.map(() => 800))
+    const text = cleaned.flat().map((l) => l.text).join(' ')
+    expect(text).not.toMatch(/AUTHOR ET AL|SHORT-FORM/)
+    expect(cleaned.flat().filter((l) => l.text.startsWith('正文'))).toHaveLength(8)
+  })
+
+  it('keeps a footer note that only some pages print', () => {
+    // Two appearances out of eight sits under the repeat share: a footnote or a
+    // licence line, not furniture.
+    const pages = Array.from({ length: 8 }, (_, i) => [
+      line(`正文第 ${i} 段。`, 600),
+      ...(i < 2 ? [line('Open Access funding provided by the university.', 20)] : []),
+    ])
+    const cleaned = stripRepeatedMargins(pages, pages.map(() => 800))
+    expect(cleaned.flat().filter((l) => l.text.startsWith('Open Access'))).toHaveLength(2)
+  })
+
   it('keeps numbers that are body text, a list marker, or a heading', () => {
     const kept = [
       line('2024', 400),

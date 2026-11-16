@@ -126,6 +126,39 @@ describe('orderPageLines', () => {
 
     expect(texts(out).sort()).toEqual(texts(input).sort())
   })
+
+  it('reads the columns under a centred abstract as columns', () => {
+    // A journal's first page: a title and an abstract narrower than the text
+    // block, then two columns of notes. The abstract is centred on the gutter,
+    // so every one of its lines crosses it and the projection below finds no
+    // gutter at all; only cutting the page into blocks first recovers them.
+    const abstract = column('A', 129, 700, 10, 336)
+    const left = column('L', 72, 520, 16, 211)
+    const right = column('R', 311, 520, 16, 212)
+    const out = orderPageLines([...right, ...abstract, ...left], PAGE)
+
+    expect(texts(out)).toEqual([...texts(abstract), ...texts(left), ...texts(right)])
+  })
+
+  it('keeps both halves of a column split by a figure in y order', () => {
+    // Two columns interrupted by a full-width note block: the notes stay where
+    // they sit, and each column resumes in place rather than being collected
+    // into one tall strip above the figure.
+    const topL = column('TL', 72, 780, 8, 211)
+    const topR = column('TR', 311, 780, 8, 212)
+    const notes = column('N', 72, 640, 4, 451)
+    const botL = column('BL', 72, 560, 8, 211)
+    const botR = column('BR', 311, 560, 8, 212)
+    const out = orderPageLines([...botR, ...topR, ...notes, ...botL, ...topL], PAGE)
+
+    expect(texts(out)).toEqual([
+      ...texts(topL),
+      ...texts(topR),
+      ...texts(notes),
+      ...texts(botL),
+      ...texts(botR),
+    ])
+  })
 })
 
 describe('detectColumns', () => {

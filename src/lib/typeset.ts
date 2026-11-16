@@ -72,6 +72,7 @@ export function restyleDocument(doc: Document, profile: 'en' | 'zh'): boolean {
   dropEmptyParagraphs(root)
   unwrapHardBreaks(root, profile)
   mergeHardWrappedParagraphs(root, profile)
+  collapseSpaces(root)
   dropEmptyParagraphs(root)
   root.setAttribute('data-leaf-typeset', profile)
   return true
@@ -172,13 +173,43 @@ function mergeHardWrappedParagraphs(root: Element, profile: 'en' | 'zh'): void {
     if (!isOpenLine(left, profile) || !continuesLine(left, right, profile, typical)) continue
     dropSkippedBetween(a, b)
     trimLeadingSpace(b)
-    if (joinsHyphenatedWord(left)) dropTrailingHyphen(a)
+    if (joinsHyphenatedWord(left, right)) dropTrailingHyphen(a)
     const gap = joinGap(left, plain(b))
     if (gap) a.append(a.ownerDocument.createTextNode(gap))
     while (b.firstChild) a.append(b.firstChild)
     b.remove()
     paras.splice(paras.indexOf(b), 1)
     i -= 1
+  }
+}
+
+/** Justified lines come out of the PDF with the extra word spacing baked in:
+ * "these  findings", "r  =  −.34". A run of spaces renders as one in HTML, but
+ * it reaches the reader again on copy and in a plain-text export, so fold it.
+ *
+ * The run can straddle two text nodes — `<b>Christiansen</b>  PHOTOGRAPHY` — so
+ * the last character out of the walk decides, not the start of the node. Tabs
+ * fold the same way; an ideographic space (U+3000) is an indent and stays. */
+function collapseSpaces(root: Element): void {
+  const walk = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let prev = ''
+  let node = walk.nextNode()
+  while (node) {
+    const raw = node.textContent ?? ''
+    if (node.parentElement?.closest('pre, code, textarea, svg')) {
+      prev = raw.slice(-1)
+      node = walk.nextNode()
+      continue
+    }
+    let out = ''
+    for (const ch of raw) {
+      const blank = ch === ' ' || ch === '\t'
+      if (blank && (prev === ' ' || prev === '\t' || prev === '' || prev === '\n')) continue
+      out += blank ? ' ' : ch
+      prev = blank ? ' ' : ch
+    }
+    if (out !== raw) node.textContent = out
+    node = walk.nextNode()
   }
 }
 
@@ -308,12 +339,11 @@ function joinGap(left: string, right: string): string {
 }
 
 /** "con-" + "tinue" is one word broken by the line, so the hyphen has to go;
- * joining it as it stands gives "con-tinue". The caller has already checked
- * that the next line opens in lowercase, which is what tells a split word from
- * a hyphen before a new sentence; a hyphen inside a line ("well-known") never
- * reaches here, and neither does an en or em dash at the line end. */
-function joinsHyphenatedWord(left: string): boolean {
-  return /[A-Za-z]-$/.test(left)
+ * joining it as it stands gives "con-tinue". A capital after the hyphen is a
+ * different thing: on a three-column page the two fragments came from different
+ * columns, and dropping the hyphen there welds two words into "informaUse". */
+function joinsHyphenatedWord(left: string, right: string): boolean {
+  return /[A-Za-z]-$/.test(left) && /^[a-z]/.test(right)
 }
 
 /** Removes the hyphen the previous line ends on, leaving any text node in

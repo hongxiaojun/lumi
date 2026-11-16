@@ -120,6 +120,17 @@ describe('detectColumns guards', () => {
     expectSingle([...titles, ...numbers])
   })
 
+  it('does not shred one column into a leaf per paragraph', () => {
+    // Paragraph gaps are wide enough to look like blocks, so the page does get
+    // cut horizontally; the blocks then hold no gutter, and putting them back
+    // together is what keeps the prose in order.
+    const lines: PdfLine[] = []
+    for (let para = 0; para < 6; para += 1) {
+      for (let i = 0; i < 4; i += 1) lines.push(line(`p${para}l${i}`, 72, 780 - para * 90 - i * 14, 451))
+    }
+    expectSingle(lines)
+  })
+
   it('never reads a right column out of a ragged right edge', () => {
     // Ragged right on a single-column page: every line starts at 72 and stops
     // where its words run out, so the white space right of the short lines

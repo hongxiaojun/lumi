@@ -45,11 +45,14 @@ const MAX_DEPTH = 2
  * figure caption, not column text. Leaving those out of the projection is what
  * lets a page with a full-width headline still show its two gutters. */
 const SPAN_WIDTH = 0.8
+/** White space taller than this many line heights separates blocks: a figure, a
+ * footnote rule, a title block. Ordinary leading leaves a fraction of that
+ * between two lines, so this never splits a paragraph. */
+const GAP_EM = 1.2
 
 /** Column leaves left to right, or null when the page reads as single column. */
 export function detectColumns(lines: PdfLine[], page: PageBox): PdfLine[][] | null {
-  const leaves = split(lines, page, 0)
-  return leaves.length > 1 ? leaves : null
+  return split(lines, page, 0)
 }
 
 /** Flat reading order. Returns the same array when the page is single column. */
@@ -58,10 +61,36 @@ export function orderPageLines(lines: PdfLine[], page: PageBox): PdfLine[] {
   return leaves ? leaves.flat() : lines
 }
 
-function split(lines: PdfLine[], page: PageBox, depth: number): PdfLine[][] {
-  if (lines.length < MIN_LINES || depth > MAX_DEPTH) return [byHeight(lines)]
+/** Leaves in reading order, or null when this block holds no columns. A block
+ * that is only stacked on another block is not a column layout, so the caller
+ * has to be able to tell "I cut" from "I looked and found one block". */
+function split(lines: PdfLine[], page: PageBox, depth: number): PdfLine[][] | null {
+  if (lines.length < MIN_LINES) return null
+  // Vertical first, because it is the reading order a column page actually has:
+  // a strip that spans the gutter belongs to the column block it sits in, and
+  // only the column block itself knows that. Cutting horizontally first would
+  // chop a column into one leaf per paragraph.
+  const columns = cutColumns(lines, page, depth)
+  if (columns) return columns
+  // No gutter anywhere in the block. A page can still be two columns under a
+  // title block and a figure: the header crosses the gutter, so the projection
+  // below finds nothing to cut, and the columns only appear once those blocks
+  // are taken out of the way. Only whole pages are treated this way. Inside a
+  // column the blocks are paragraphs, and cutting there would give a leaf per
+  // paragraph in a page that already reads in order.
+  if (depth > 0) return null
+  const blocks = bands(lines)
+  if (blocks.length < 2) return null
+  const cut = blocks.map((block) => split(block, page, depth))
+  if (cut.every((leaves) => leaves === null)) return null
+  return cut.flatMap((leaves, i) => leaves ?? [byHeight(blocks[i])])
+}
+
+/** Cut the block at its widest accepted gutter, or null when it has none. */
+function cutColumns(lines: PdfLine[], page: PageBox, depth: number): PdfLine[][] | null {
+  if (depth > MAX_DEPTH) return null
   const metrics = measure(lines, page, depth)
-  if (!metrics) return [byHeight(lines)]
+  if (!metrics) return null
   for (const gutter of gutters(lines, metrics)) {
     const entries = classify(lines, gutter)
     if (!accept(entries, metrics)) continue
@@ -69,12 +98,14 @@ function split(lines: PdfLine[], page: PageBox, depth: number): PdfLine[][] {
     for (const strip of strips(entries)) {
       if (strip.span.length) out.push(byHeight(strip.span))
       for (const side of [strip.left, strip.right]) {
-        if (side.length) out.push(...split(side, page, depth + 1))
+        if (!side.length) continue
+        const nested = split(side, page, depth + 1)
+        out.push(...(nested ?? [byHeight(side)]))
       }
     }
     return out
   }
-  return [byHeight(lines)]
+  return null
 }
 
 function measure(lines: PdfLine[], page: PageBox, depth: number): Metrics | null {
@@ -230,3 +261,33 @@ function strips(entries: Entry[]): Strip[] {
 function byHeight(lines: PdfLine[]): PdfLine[] {
   return [...lines].sort((a, b) => b.y - a.y || a.x0 - b.x0)
 }
+
+/** The horizontal blocks a gap wider than a line separates, top down.
+ *
+ * Two columns interrupted by a figure are two text blocks, and reading order
+ * must run through the upper block before the lower one; treating them as one
+ * block makes the projection see a gutter as broken. A page with no such gap
+ * comes back as a single block, so ordinary prose is untouched.
+ */
+function bands(lines: PdfLine[]): PdfLine[][] {
+  const ordered = byHeight(lines)
+  const limit = GAP_EM * bodySize(ordered)
+  const out: PdfLine[][] = []
+  let current: PdfLine[] = [ordered[0]]
+  for (let i = 1; i < ordered.length; i += 1) {
+    const above = ordered[i - 1]
+    const line = ordered[i]
+    // Distance between the two text bands, not between their baselines: a line
+    // of type sits inside its own leading.
+    const gap = above.y - above.h * 0.5 - (line.y + line.h * 0.5)
+    if (gap > limit) {
+      out.push(current)
+      current = []
+    }
+    current.push(line)
+  }
+  out.push(current)
+  return out
+}
+
+export const __debug = { measure, gutters, classify, accept, spannedShare, medianLineEm, bodySize }
