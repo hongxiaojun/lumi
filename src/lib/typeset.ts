@@ -10,6 +10,15 @@ const SENTENCE_END = /[.!?…]['"’”)\]]*$/u
 const ZH_SENTENCE_END = /[。！？…!?]\s*[」』”’】）)\]]*$/u
 const VERSE_CLASS = /verse|poem|line|stanza|poetry|song/
 const NEW_BLOCK = /^[「『“【]|第[零一二三四五六七八九十百千0-9]+[章节回部篇]/
+/** A line shorter than this share of the typical line stopped short of the
+ * column's right edge, so it is the last line of its paragraph rather than a
+ * wrapped one. */
+const FULL_LINE_SHARE = 0.7
+/** A line this long is body text whatever it opens with; page numbers, run-in
+ * headings and table cells are shorter. */
+const SHORT_LINE_SHARE = 0.35
+/** Fragments shorter than this say nothing about the body's line width. */
+const LINE_MIN_CHARS = 20
 
 export function languageFromMeta(value: unknown): ScriptKind | null {
   const primaries = codesOf(value)
@@ -152,6 +161,7 @@ function mergeHardWrappedParagraphs(root: Element, profile: 'en' | 'zh'): void {
   const paras = [...root.querySelectorAll('p, div')].filter(isLineBlock)
   const lengths = paras.map((el) => plain(el).length)
   if (!shouldAttemptUnwrap(lengths, profile)) return
+  const typical = typicalLength(lengths)
   for (let i = 0; i < paras.length - 1; i += 1) {
     const a = paras[i]
     const b = nextLineBlock(a)
@@ -159,7 +169,7 @@ function mergeHardWrappedParagraphs(root: Element, profile: 'en' | 'zh'): void {
     if (a.parentElement !== b.parentElement) continue
     const left = plain(a)
     const right = plain(b)
-    if (!isOpenLine(left, profile) || !isContinuation(right, profile)) continue
+    if (!isOpenLine(left, profile) || !continuesLine(left, right, profile, typical)) continue
     dropSkippedBetween(a, b)
     trimLeadingSpace(b)
     if (joinsHyphenatedWord(left)) dropTrailingHyphen(a)
@@ -237,15 +247,58 @@ function isOpenLine(text: string, profile: 'en' | 'zh'): boolean {
   return /[A-Za-z\u3400-\u9fff]/.test(text)
 }
 
-function isContinuation(text: string, profile: 'en' | 'zh'): boolean {
-  if (!text || NEW_BLOCK.test(text)) return false
-  if (/^[a-z]/.test(text)) return true
-  if (profile === 'zh' && /^[\u3400-\u9fff]/.test(text)) return true
-  return false
+/** The median length of the lines long enough to be body text. Hard-wrapped
+ * text runs every line out to the same right edge, so in characters this is
+ * that edge: a justified line measures it, a paragraph's last line falls short. */
+function typicalLength(lengths: number[]): number {
+  const usable = lengths.filter((n) => n >= LINE_MIN_CHARS).sort((a, b) => a - b)
+  return usable[Math.floor(usable.length / 2)] ?? 0
+}
+
+/** Whether the line ran to the column's right edge, which is what separates a
+ * wrapped line from the last line of a paragraph. With no geometry to measure,
+ * the typical line stands in for that edge; a document too short to have one
+ * keeps the old text-only behaviour. */
+function isFullLine(text: string, typical: number): boolean {
+  return typical === 0 || text.length >= FULL_LINE_SHARE * typical
+}
+
+/** Whether `right` carries on the sentence that `left` leaves open.
+ *
+ * Checking only for a lowercase first letter merged any paragraph whose next
+ * line happened to be lowercased, and on a journal page the leg of a run-in
+ * heading is exactly that: a lone "Results" above the tail of the paragraph
+ * before it came out as "Results planning).  Inclusion of covariates…", and
+ * "Search Results" swallowed "examined as an exploratory moderator." A heading
+ * stops well short of the column edge, so the line above it has to be checked
+ * as well as the letter the next one opens with.
+ */
+function continuesLine(
+  left: string,
+  right: string,
+  profile: 'en' | 'zh',
+  typical: number,
+): boolean {
+  if (!right || NEW_BLOCK.test(right)) return false
+  if (!isFullLine(left, typical)) return false
+  if (/^[a-z]/.test(right)) return true
+  if (profile === 'zh' && /^[\u3400-\u9fff]/.test(right)) return true
+  // A capital, a digit or an opening bracket can start a continuation or a
+  // page number, a heading, a table cell. Only a line long enough to be body
+  // text is worth merging: "1130" and "Sensitivity Analyses" are not, while
+  // "SFVs dominant sources of information" and "(Y. Wu et al., 2021; …" are.
+  if (typical === 0 || right.length < SHORT_LINE_SHARE * typical) return false
+  // A line that stops on a digit ends a URL or a page number, never a word
+  // half-written: the capital under it opens the next reference entry, which
+  // would otherwise be welded onto the one before ("…K-04-2022-0551*Al-Garni").
+  return !/\d$/.test(left)
 }
 
 function joinGap(left: string, right: string): string {
-  if (/[A-Za-z]$/.test(left) && /^[A-Za-z]/.test(right)) return ' '
+  // A word followed by an opening bracket keeps the space the line break
+  // replaced: "a few minutes" + "(Y. Wu et al., 2021; …" otherwise reads
+  // "minutes(Y. Wu".
+  if (/[A-Za-z]$/.test(left) && /^[A-Za-z("'“‘[]/.test(right)) return ' '
   // A line that stops on a comma still needs the space the line break replaced:
   // "…sustained cognitive engagement," + "as processing slows" otherwise reads
   // "engagement,as processing slows". Same for the other marks that never touch

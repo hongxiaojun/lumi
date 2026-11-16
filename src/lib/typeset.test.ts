@@ -357,4 +357,70 @@ describe('restyleEnglishDocument', () => {
     expect(doc.querySelectorAll('p')).toHaveLength(2)
     expect(text(doc)).toContain('also-')
   })
+
+  it('does not join a run-in heading to the leg of the paragraph under it', () => {
+    // Page 6 of the review: "Search Results" is a margin heading on its own
+    // baseline, and the leg beneath it opens in lowercase. A lowercase-only
+    // test read that as mid-sentence and printed "Search Results examined as
+    // an exploratory moderator." — a heading welded to someone else's words.
+    const doc = parse(
+      '<p>Appraisal Tool Scores 3–5). Similarly, correlational studies and group comparison studies produced comparable findings.</p>' +
+        '<p>Search Results</p>' +
+        '<p>examined as an exploratory moderator.</p>',
+    )
+    restyleEnglishDocument(doc)
+    expect([...doc.querySelectorAll('p')].map((p) => p.textContent)).toEqual([
+      'Appraisal Tool Scores 3–5). Similarly, correlational studies and group comparison studies produced comparable findings.',
+      'Search Results',
+      'examined as an exploratory moderator.',
+    ])
+  })
+
+  it('does not glue a running head to the paragraph under it', () => {
+    // The running head is a line that stops far short of the column edge but
+    // happens to be followed by lowercase text, so it looked like a wrapped
+    // line: "SHORT-FORM VIDEOS AND HEALTH CORRELATES report difficulties…".
+    const doc = parse(
+      '<p>Participants also described losing track of time and the tendency to keep scrolling well past the point they had intended to stop.</p>' +
+        '<p>SHORT-FORM VIDEOS AND HEALTH CORRELATES</p>' +
+        '<p>report difficulties disengaging and regulating their use.</p>' +
+        '<p>Interviews were transcribed and coded independently by two researchers.</p>',
+    )
+    restyleEnglishDocument(doc)
+    expect(doc.querySelectorAll('p')).toHaveLength(4)
+  })
+
+  it('joins a capitalised continuation after a line that reached the margin', () => {
+    // "…communication, making" / "SFVs dominant sources of information…": the
+    // next line opens a proper noun, so the old test refused and the sentence
+    // broke in two. A line that ran to the edge cannot end a paragraph.
+    const doc = parse(
+      '<p>Short videos have moved from novelty to an increasingly digital entertainment and communication, making</p>' +
+        '<p>SFVs dominant sources of information and engagement for young people.</p>',
+    )
+    restyleEnglishDocument(doc)
+    expect(doc.querySelectorAll('p')).toHaveLength(1)
+    expect(text(doc)).toBe(
+      'Short videos have moved from novelty to an increasingly digital entertainment and communication, making SFVs dominant sources of information and engagement for young people.',
+    )
+  })
+
+  it('joins a continuation that opens with a bracket or a year', () => {
+    const doc = parse(
+      '<p>The appeal of the format was documented early, with studies lasting a few seconds to a few minutes</p>' +
+        '<p>(Y. Wu et al., 2021; Y. Yang et al., 2024) and later work on the same platforms.</p>',
+    )
+    restyleEnglishDocument(doc)
+    expect(doc.querySelectorAll('p')).toHaveLength(1)
+    expect(text(doc)).toContain('a few minutes (Y. Wu et al., 2021')
+  })
+
+  it('does not join a page number to the line above it', () => {
+    const doc = parse(
+      '<p>Subgroup moderator analyses were conducted for age group, platform, measure of use, and health domain</p>' +
+        '<p>1130</p>',
+    )
+    restyleEnglishDocument(doc)
+    expect(doc.querySelectorAll('p')).toHaveLength(2)
+  })
 })

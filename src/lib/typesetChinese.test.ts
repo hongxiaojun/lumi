@@ -94,8 +94,11 @@ describe('Chinese restyle — other wrap shapes', () => {
 
   it('still unwraps remnants inside a mixed chapter of long and short lines', () => {
     const long = '<p>这是一段结构完整的正文，句子有标点，长度也足够用来模拟正常中文书的段落排版，不应该被当成硬换行。</p>'
+    // A hard-wrapped line runs to the column edge, so the line before the break
+    // has to be as long as the body's other lines; a shorter one is a paragraph
+    // ending, not a break inside a word.
     const wrap =
-      '<p>对于同一个问题，改变了位置之后，可能看法会截然不同，甚</p><p>至能够找到更优质的解决方法。</p>'
+      '<p>很多人都有过这样的体会，对于同一个问题，改变了位置之后，可能看法会截然不同，甚</p><p>至能够找到更优质的解决方法。</p>'
     const html = Array.from({ length: 8 }, () => long).join('') + wrap
     const doc = parse(html)
     restyleDocument(doc, 'zh')
@@ -119,5 +122,14 @@ describe('Chinese restyle — must not merge', () => {
   it('keeps a heading-like 第N章', () => {
     const html = '<p>上一章说到这里</p><p>第三章 自学的方法</p>'
     expect(paras(html)).toHaveLength(2)
+  })
+
+  it('leaves verse lines alone in a chapter of long lines', () => {
+    // Walden's poems arrive as one short line per paragraph, none of them
+    // reaching the measure, so each is a line of its own and not a wrap.
+    const long = '<p>这是一段结构完整的正文，句子有标点，长度也足够用来模拟正常中文书的段落排版，不应该被当成硬换行。</p>'
+    const verse = '<p>穷鬼，你太装腔作势，</p><p>在苍穹底下占着位置，</p><p>你的茅草棚或你的木桶，</p>'
+    const html = Array.from({ length: 8 }, () => long).join('') + verse
+    expect(paras(html)).toHaveLength(11)
   })
 })
